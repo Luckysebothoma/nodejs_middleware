@@ -1,0 +1,18 @@
+{
+  "name": "broken-base-3c16",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.782.0",
+    "dayjs": "^1.11.13",
+    "express": "^5.1.0",
+    "pretty-bytes": "^6.1.1"
+  }
+}

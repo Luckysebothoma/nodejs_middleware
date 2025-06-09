@@ -1,0 +1,55 @@
+
+*sweety-mysql-container-wk3306-image.tar
+nlp.js-app-master/
+Dashboards/prometheus/.prometheus_data/
+sweety-images/
+old-sweety-sweet-app-images/
+*lib*
+*.prometheus/*
+
+./node_modules/
+
+.png
+.jpg
+# Node.js dependencies
+node_modules/
+
+# Angular build output
+/dist/
+node_module
+out-tsc/
+
+.angular/
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE settings
+.vscode/
+.idea/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Environment files
+#.env
+#.env.*  # Ignore all environment variable files (e.g., .env.local, .env.production, etc.)
+
+# Temporary files
+*.swp
+*.swo
+
+# Coverage directories and files (for testing tools)
+coverage/
+*.lcov
+
+# Other directories or files specific to your project that you want to ignore
+
+# sqlite
+.sqlite
