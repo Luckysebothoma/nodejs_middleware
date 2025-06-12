@@ -15,7 +15,7 @@ const { addSodEodItems, deleteSodEodItems, getSodEodItems, updateSodEodItems, re
 const { addEstimates, getEstimates, updateEstimates, removeEstimateById } = require("../controller/estimateController");
 const { addPriceTracing, getPriceTracing, updatePriceTracing, removePriceTracing } = require("../controller/priceTracingController");
 const { addProductItemPricing, getProductItemPricingList, updateProductItemPricing, createProductItemPricing } = require("../controller/productItemPricing");
-const { addNewCandy } = require("../controller/bulkTransactionController");
+const { addNewCandy, addNewCandy_with_image } = require("../controller/bulkTransactionController");
 const { uploadImages, uploadMiddleware} = require("../controller/uploadImages");
 
 // Iamge
@@ -121,6 +121,7 @@ router.put('/updatePricingList', updatePricingList);
     // Add New Candy
 
 router.post('/addNewCandy', addNewCandy);
+router.post("addNewCandy_with_image", addNewCandy_with_image)
 
 // Transactions
 

@@ -51,7 +51,34 @@ const addNewCandy = async(req, res) =>{
 
 */
 
+const addNewCandy_with_image = async(req,res) => {
+  console.log("addNewCandy_with_image Started")
+  const { addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing, file } = req.body;
 
+  // You can now use these variables as needed
+  // Example: pass them to your function
+  addNewCandy_function(addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing);
+  console.log("DOne Adding product, Now adding image")
+
+  //Create mysql insert statement
+  // Example: Insert uploaded image metadata into a table called 'product_images'
+  // Assuming 'file' contains: { filename, mimetype, size }
+  const imageInsertQuery = `
+    INSERT INTO images (filename, mimetype, size, created_at)
+    VALUES (?, ?, ?, NOW())
+  `;
+  const imageReplacements = [
+    file.filename,
+    file.mimetype,
+    file.size
+  ];
+
+  addCachedAndQuery.addCachedAndQuery("images", imageInsertQuery,imageInsertQuery,imageReplacements);
+
+
+  //await mysqlPool.query(imageInsertQuery, imageReplacements);
+  
+}
 const addNewCandy = async(req, res) =>{
 
   const { addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing } = req.body;
@@ -93,7 +120,46 @@ console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
 
 
 }
+async function addNewCandy_function(addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing ){
 
+  
+  
+//  const connection = await mysqlPool.createConnection(); // Get a connection from the pool
+
+
+// Process each part as needed
+
+res.json({ message: 'Data received successfully' });
+
+// await mysqlPool.beginTransaction(); // Start the transaction
+
+// Example of logging each part
+console.log("" + ' \n Add Product Request:', addProductListRequest);
+
+console.log("" + '\n Add Yummy Request:', addProductPricingRequest);
+
+console.log("" + '\n Add Available Items:', addAvailableItemsRequest);
+
+console.log("" + '\n Add Price Tracing:', addPriceTracing);
+
+
+const productResult = await addProductRecord(addProductListRequest);
+const yummyResult = await addYummyRecord(addProductPricingRequest);
+const available_itemsResult = await addAvailableItems(addAvailableItemsRequest)
+const price_tracing_Result = await addPriceTrace(addPriceTracing);
+
+
+// Example of logging each part
+console.log(productResult + ' \n Add Product Request:', addProductListRequest);
+
+console.log(yummyResult + '\n Add Yummy Request:', addProductPricingRequest);
+
+console.log(available_itemsResult + '\n Add Available Items:', addAvailableItemsRequest);
+
+console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
+
+
+}
 const deleteItem = async(req, res) =>{
 
 const {productId} = req.body;  
@@ -280,4 +346,4 @@ return data;
 }
 
 
-module.exports = {addNewCandy, deleteItem}
+module.exports = {addNewCandy, addNewCandy_with_image, deleteItem}

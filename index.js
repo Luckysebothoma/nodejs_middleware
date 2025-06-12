@@ -17,7 +17,8 @@ const bodyParser = require('body-parser');
 const client = require('prom-client');
 const tempImageRoutes = require('./routes/tempImage');
 const { Registry, Counter, Histogram, Gauge, collectDefaultMetrics, Pushgateway } = require ('prom-client'); 
-const {getShortTime} = require("./utils/Time")
+const {getShortTime} = require("./utils/Time");
+const { getCachedOrQuery } = require("./utils/ControllerHandler");
 // Load environment variables
 dotenv.config();
 const TTL_SECONDS = 600 * 10; // 10 Mins x 10
@@ -293,6 +294,7 @@ app.get('/metrics', async (req, res) => {
 const upload = multer({ dest: 'uploads/' }); // or your custom storage config
 app.post('/images/temp', upload.single('file'), async (req, res) => {
 
+    const key = req.query.key;
   // Log useful request fields
   const logFields = {
     method: req.method,
@@ -304,27 +306,33 @@ app.post('/images/temp', upload.single('file'), async (req, res) => {
     ip: req.ip,
     hostname: req.hostname,
     query: req.query,
+    key: key
   };
 
   console.log(formattedDate() + " [Request Info]:", JSON.stringify(logFields, null, 2));
   const imageId = uuidv4();
-  const key = `temp:image:${imageId}`;
+//  const key = `temp:image:${imageId}`;
 
-  if (!req.file) {
+//  const key = req.file.originalname;
+
+  if (!req.file && !key) {
     res.status(400).json({ error: 'No file uploaded' });
     return;
   }
 
   const imageData = {
+    
     buffer: fs.readFileSync(req.file.path).toString('base64'), // Store as base64
     mimetype: req.file.mimetype,
     originalname: req.file.originalname
   };
-  console.log("Done Preparing Image " + JSON.stringify(imageData));
+  console.log("Done Preparing Image " );
   try {
     await redisClient.set(key, JSON.stringify(imageData), 'EX', TTL_SECONDS);
     console.log("Done writing to Redis key[" +  key +"]");
-    return imageId;
+    const ack = await redisClient.wait(1, 100); // wait for 1 replica to acknowledge within 100ms
+    console.log("Redis response: "+ ack)
+    return key;
   } catch (error) {
     console.log("Failed to write to Redis key[" +  key +"] " + error);
     return res.status(500).json({ error: 'Failed to store image in Redis' });
@@ -333,15 +341,65 @@ app.post('/images/temp', upload.single('file'), async (req, res) => {
  // res.status(200).json({ message: 'Image uploaded and stored', key });
 });
 
+app.get('/images/temp-key', (req, res) => {
+  const imageId = uuidv4();
+  const key = imageId;
 
-app.get('/temp/:id', async (req, res) => {
-  const key = req.params.id;
-  console.log("Now Reading key :" + key)
-  const data = await redisClient.get(key);
+  const logFields = {
+    method: req.method,
+    url: req.originalUrl,
+    query: req.query,
+    ip: req.ip,
+    generatedKey: key
+  };
+
+  console.log(formattedDate() + " [Generated Key]:", JSON.stringify(logFields, null, 2));
+  res.status(200).json({ key });
+});
+
+app.get('/temp', async (req, res) => {
   
+  const key = req.query.key; // Correctly get key from query parameters
+
+  //  const key = req.params.key;
+      // Log useful request fields
+      
+      const logFields = {
+        method: req.method,
+        url: req.originalUrl,
+        baseUrl: req.baseUrl,
+        path: req.path,
+        headers: req.headers,
+        body: req.body,
+        ip: req.ip,
+        hostname: req.hostname,
+        query: req.query,
+      };
+
+      console.log(formattedDate() + "temp [Request Info]:", JSON.stringify(logFields, null, 2));
+  const decodedKey = decodeURIComponent(key);
+    const sanitizedKey = decodedKey.replace(/^temp:image:/, '');
+
+  console.log("Now Reading key :" + key + " Decoded key: " + decodedKey + " Sanitized: " + sanitizedKey);
+
+  // Wait for Redis replicas to acknowledge before reading (optional, usually used after writes)
+  // Here, we just try to get the value and if not found, retry a few times
+  let data = null;
+  const maxRetries = 5;
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    data = await redisClient.get(decodedKey);
+    if (data) break;
+   
+    await new Promise(resolve => setTimeout(resolve, 100)); // wait 100ms before retry
+    attempt++;
+     console.log(formattedDate() +" Attempt: "+ attempt+"] to get " + decodedKey)
+  }
+
+  console.log("redisClient data: " + data);
   if (!data) return res.status(404).json({ message: 'Image not found or expired' });
 
-  console.log("CACHED HIT: Key "+ key)
+  console.log("CACHE HIT: Key " + key);
 
   const parsed = JSON.parse(data);
   const imgBuffer = Buffer.from(parsed.buffer, 'base64');
@@ -349,8 +407,6 @@ app.get('/temp/:id', async (req, res) => {
   res.set('Content-Type', parsed.mimetype);
   res.send(imgBuffer);
 });
-
-
 
 // Ensure the uploads directory exists
 

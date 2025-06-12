@@ -40,7 +40,7 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
     try {
 
       if (!mysqlPool){
-         console.error(getShortTime(new Date) + "mysqlPool is not defined or imported properly");
+         console.error( "mysqlPool is not defined or imported properly");
       return;
         }else{
           // create new instance
@@ -70,7 +70,7 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
       throw new Error('Postgres also empty');
     }
   } catch (err) {
-    console.error(getShortTime(new Date) + `getCachedOrQuery error:`, err.message);
+    console.error( `getCachedOrQuery error:`, err.message);
     throw err;
   }
 };
@@ -125,8 +125,8 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
     console.log("Mysql connected:" +  mysqlConnection)
     // For Sequelize, use transaction object; for node-postgres, use client.connect()
     // Assuming pgClient is Sequelize instance:
-    const pgTransaction = await pgClient.transaction();
-    console.log("PG connected:" +  pgTransaction)
+//    const pgTransaction = await pgClient.transaction();
+//    console.log("PG connected:" +  pgTransaction)
 
     // Begin transactions on both databases
     await mysqlConnection.beginTransaction();
@@ -140,15 +140,15 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
       // Execute both inserts
       await mysqlConnection.query(mysqlInsertQuery, values);
       console.log("✅ mySql insert success [" + key + "]");
-      await pgClient.query(pgInsertQuery, { transaction: pgTransaction, replacements: values });
-      console.log("✅ PostgreSQL insert success [" + key + "]");
+      // await pgClient.query(pgInsertQuery, { transaction: pgTransaction, replacements: values });
+      // console.log("✅ PostgreSQL insert success [" + key + "]");
 
       // Commit both transactions
       await mysqlConnection.commit();
       console.log("✅ mySql COMMITTED success [" + key + "]");
 
-      await pgTransaction.commit();
-            console.log("✅ PG COMMITTED success [" + key + "]");
+     // await pgTransaction.commit();
+     //       console.log("✅ PG COMMITTED success [" + key + "]");
 
       console.log("🚀 Transaction COMMITTED for key [" + key + "]");
       
@@ -169,8 +169,8 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
 //      console.log("Succefuly added to postgres key [" + key +"]")
       // Rollback both on error
       await mysqlConnection.rollback();
-      await pgTransaction.rollback();
-      console.error(getShortTime(new Date) + "❌ Transaction FAILED and ROLLED BACK for key [" + key + "]:", err);
+    //  await pgTransaction.rollback();
+      console.error( "❌ Transaction FAILED and ROLLED BACK for key [" + key + "]:", err);
 
     }
     } finally {
@@ -259,7 +259,7 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery) => {
 
     return result;
   } catch (err) {
-    console.error(getShortTime(new Date) + `updateCachedOrQuery error:`, err.message);
+    console.error( `updateCachedOrQuery error:`, err.message);
     throw err;
   }
 };
@@ -275,7 +275,7 @@ const removeCachedAndQuery = async (key, mysqlDeleteQuery, pgDeleteQuery) => {
     await redisClient.del(key);
     return { success: true };
   } catch (err) {
-    console.error(getShortTime(new Date) + `removeCachedAndQuery error:`, err.message);
+    console.error( `removeCachedAndQuery error:`, err.message);
     throw err;
   }
 };

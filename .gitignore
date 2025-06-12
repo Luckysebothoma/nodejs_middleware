@@ -1,6 +1,8 @@
 Dashboards/prometheus/.prometheus_data/
 Dashboards/prometheus/grafana_storage/
- Dashboards/dbeaver/data-files/.data/
+Dashboards/dbeaver/data-files/.data/
+
+uploads/
 
 .png
 .jpg
