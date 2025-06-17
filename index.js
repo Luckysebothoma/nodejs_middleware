@@ -147,7 +147,7 @@ if (cluster.isMaster) {
         query: req.query,
       };
 
-      console.log(formattedDate() + " [Request Info]:", JSON.stringify(logFields, null, 2));
+  //    console.log(formattedDate() + " [Request Info]:", JSON.stringify(logFields, null, 2));
 
     next();
   });
@@ -285,12 +285,58 @@ app.post('/frontend-console-metric', (req, res) => {
 
 
 app.use('/api/v1/student', require('./routes/studentsRoutes'));
+// ✅ Initialize `upload` BEFORE using it
+const redisUpload = multer(); // or multer({ storage: ... }) if needed
 
+
+
+
+    // ✅ Route definition after client is connected
+    app.get('/api/image/:id', async (req, res) => {
+      const productId = req.params.id;
+      const key = `Product:Product_${productId}:base64`;
+
+
+      try {
+        const base64Image = await redisClient.get(key);
+
+        if (!base64Image) {
+          return res.status(404).json({ error: 'Image not found in Redis' });
+        }
+
+        // Return as-is, assuming it includes data URI prefix
+        res.json({ base64: base64Image });
+      } catch (err) {
+        console.error('Error accessing Redis:', err);
+        res.status(500).json({ error: 'Redis error', detail: err.message });
+      }
+    });
 
 app.get('/metrics', async (req, res) => {
   res.set('Content-Type', register.contentType);
   res.end(await register.metrics());
 });
+app.post('/sortedAsRedisKey', redisUpload.single('blob'), async (req, res) => {
+
+
+  const redisKey = req.body.key;
+  const base64Data = req.body.base64;
+  const blobBuffer = req.file.buffer;
+  const key = `product:${redisKey}`;
+
+
+  // Example: Store both blob and base64 in Redis
+//   await redisClient.set(`${redisKey}:blob`, blobBuffer);
+//   await redisClient.set(`${redisKey}:base64`, base64Data);
+
+await redisClient.set(`${key}:blob`, blobBuffer);
+await redisClient.set(`${key}:base64`, base64Data);
+
+
+  res.send({ message: redisKey + 'Stored successfully' });
+});
+
+
 const upload = multer({ dest: 'uploads/' }); // or your custom storage config
 app.post('/images/temp', upload.single('file'), async (req, res) => {
 

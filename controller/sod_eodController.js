@@ -1,7 +1,12 @@
 const dbSequelize = require("../config/db")
-const QueryTypes = require("sequelize")
+const QueryTypes = require("sequelize");
+const {  getCachedOrQuery,
+  addCachedAndQuery,
+  updateCachedOrQuery,
+  removeCachedAndQuery} = require("../utils/ControllerHandler");
+const { formattedDate } = require("../utils/Time");
 
-const cacheKey = 'sodEodList'; // Key to store the list in Redis
+const cacheKey = 'sodEodItems'; // Key to store the list in Redis
 
 
 const getSodEodList = async(req, res) =>{
@@ -75,29 +80,7 @@ const addSodEodList = async(req, res) => {
         const replacements = [productName, itemsTaken,itemsRemaining, lastUpdated,productId, availableItems, outOfStock];
      
         // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements,
-            type: dbSequelize.QueryTypes.INSERT
-        });            
-            
-            
-            
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CNNOT INSERT DATA TO CART DUE TO A ERROR",
-     
-                })
-        }else{
-            
-            const [data] = await dbSequelize.query('SELECT * FROM sodEodItems')
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-            res.status(200).send({
-                success:true, 
-                message:"New Recored Inserted TO SodEod and Removed Key on Redis Successfully",
-            })
-
-        }
+        await addCachedAndQuery(cacheKey, query, query, replacements);
      
      
          } catch (error) {
@@ -173,14 +156,15 @@ const removeSodEodById = async(req, res) =>{
             try {
 				
 
-                const data = await dbSequelize.query('DELETE FROM sodEodItems WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
-
+                const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
+                                const replacements = [productId];
+                
+                                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+                
                 res.status(200).send({
                     success:true,
-                    message:"ID [" + lastUpdated +"] DELETED Successfully"
+                    message:"ID [" + productId +"] DELETED Successfully"
                 })
 
 
@@ -214,6 +198,7 @@ const deleteSodEodItems = async(req, res) =>{
     try {
 
         const productId = req.params.id;
+        console.log(formattedDate() + "ID Pricing to delte: " + productId);
 
         if(!productId){
             return res.status(404).send({
@@ -226,14 +211,15 @@ const deleteSodEodItems = async(req, res) =>{
             try {
 				
 
-                const data = await dbSequelize.query('DELETE FROM sodEodItems WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
+const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
+                const replacements = [productId];
+
+                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
 
                 res.status(200).send({
                     success:true,
-                    message:"ID [" + lastUpdated +"] DELETED Successfully"
+                    message:"ID [" + productId +"] DELETED Successfully"
                 })
 
 

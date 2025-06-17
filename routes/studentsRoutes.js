@@ -14,9 +14,14 @@ const { addAvailableItems, getAvailableItems, updateAvailableItems, removeAvaila
 const { addSodEodItems, deleteSodEodItems, getSodEodItems, updateSodEodItems, removeSodEodById, getSodEodList, addSodEodList } = require("../controller/sod_eodController");
 const { addEstimates, getEstimates, updateEstimates, removeEstimateById } = require("../controller/estimateController");
 const { addPriceTracing, getPriceTracing, updatePriceTracing, removePriceTracing } = require("../controller/priceTracingController");
-const { addProductItemPricing, getProductItemPricingList, updateProductItemPricing, createProductItemPricing } = require("../controller/productItemPricing");
-const { addNewCandy, addNewCandy_with_image } = require("../controller/bulkTransactionController");
+const { addProductItemPricing, getProductItemPricingList, updateProductItemPricing, createProductItemPricing, deleteProductItemPricing } = require("../controller/productItemPricing");
+const { addNewCandy, addNewCandy_with_image, deleteItem } = require("../controller/bulkTransactionController");
 const { uploadImages, uploadMiddleware} = require("../controller/uploadImages");
+
+
+
+
+
 
 // Iamge
 const imageService = require("../services/imageService");
@@ -39,6 +44,8 @@ router.post("/addEstimates", addEstimates);
 router.get("/getEstimates", getEstimates);
 router.put("/updateEstimates", updateEstimates);
 router.delete('/removeEstimateById/:id', removeEstimateById)
+
+router.delete("/deleteProductbyId", deleteItem);
 
 // Upload Image
 
@@ -64,6 +71,7 @@ router.delete('/removePriceTracing/:id', removePriceTracing)
 router.post("/addProductItemPricing", addProductItemPricing );
 router.get("/getProductItemPricing",getProductItemPricingList );
 router.put('/updateProductItemPricing', updateProductItemPricing);
+router.delete('/removeProductItemPricing/:id',deleteProductItemPricing)
 
 // stock
 router.post('/addStock', addStock);

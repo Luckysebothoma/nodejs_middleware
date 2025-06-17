@@ -1,5 +1,10 @@
-const dbSequelize = require("../config/db")
-const QueryTypes = require("sequelize")
+const {  getCachedOrQuery,
+  addCachedAndQuery,
+  updateCachedOrQuery,
+  removeCachedAndQuery} = require("../utils/ControllerHandler");
+const { formattedDate } = require("../utils/Time");
+
+
 
 const cacheKey = 'stockedItems'; // Key to store the list in Redis
 
@@ -40,11 +45,11 @@ const deleteStock = async(req, res) =>{
 
             try {
 				
+const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
+                const replacements = [productId];
 
-                const data = await dbSequelize.query('DELETE FROM stockItems WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
+                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
 
                 res.status(200).send({
                     success:true,
@@ -113,25 +118,11 @@ const addStock = async(req, res) => {
         const replacements = [productId, productName,productFlavor,productPrice, lastUpdated, productQuantity];
 
         // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements,
-            type: dbSequelize.QueryTypes.INSERT
-        });            
+                  
+            addCachedAndQuery("stockItems",query, query, replacements)
             
             
-            
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CNNOT INSERT DATA TO CART DUE TO A ERROR",
 
-                })
-        }else{
-                res.status(201).send({
-                    success:true, 
-                    message:"New Recored Inserted TO CART Successfully",
-                })
-        }
         
         
         }
@@ -185,29 +176,9 @@ const addStockedItems = async(req, res) => {
         // Parameterized query with replacements
         const replacements = [productId, stockDate,stockId,stockPrice, stockQuantity];
 
-        // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements,
-            type: dbSequelize.QueryTypes.INSERT
-        });            
-            
-            
-            
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CNNOT INSERT DATA TO CART DUE TO A ERROR",
+        
+        addCachedAndQuery("stockedItems",query, query, replacements)
 
-                })
-        }else{
-            const [data] = await dbSequelize.query('SELECT * FROM stockedItems')
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-            
-                res.status(201).send({
-                    success:true, 
-                    message:"New Recored Inserted TO CART Successfully",
-                })
-        }
         
         
         }
@@ -234,9 +205,7 @@ const removeStockedItems = async(req, res) =>{
 
     try {
 
-        const productId = req.params.id;
-        console.log("ID Pricing to delte");
-        console.log(productId);
+        console.log(formattedDate() + "ID Pricing to delte: " + productId);
 
         if(!productId){
             return res.status(404).send({
@@ -248,11 +217,11 @@ const removeStockedItems = async(req, res) =>{
 
             try {
 				
+const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
+                const replacements = [productId];
 
-                const data = await dbSequelize.query('DELETE FROM stockedItems WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
+                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
 
                 res.status(200).send({
                     success:true,

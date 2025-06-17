@@ -98,25 +98,7 @@ const add2Cart = async(req, res) => {
         const replacements = [productId, productName,productFlavor,productPrice];
 
         // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements,
-            type: dbSequelize.QueryTypes.INSERT
-        });            
-            
-            
-            
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CNNOT INSERT DATA TO CART DUE TO A ERROR",
-
-                })
-        }else{
-                res.status(201).send({
-                    success:true, 
-                    message:"New Recored Inserted TO CART Successfully",
-                })
-        }
+        addCachedAndQuery("cartList",query, query, replacements)
         
         
         }
@@ -139,6 +121,7 @@ const deleteCart= async(req, res) =>{
     try {
 
         const productId = req.params.id;
+        console.log(formattedDate() + "ID Pricing to delte: " + productId);
 
         if(!productId){
             return res.status(404).send({
@@ -151,10 +134,10 @@ const deleteCart= async(req, res) =>{
             try {
 
 
-                const data = await dbSequelize.query('DELETE FROM cartList WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
+                const query= 'DELETE FROM cartList WHERE productId = :productId';
+                const replacements = { productId };
+
+                const data = await removeCachedAndQuery(cacheKey, query, query)
 
                 res.status(200).send({
                     success:true,

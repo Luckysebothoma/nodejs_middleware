@@ -4,12 +4,12 @@ const { pgClient } = require('../config/postgres');
 const mysql = require("mysql2/promise"); 
 const keys = require("../keys")
 const getShortTime = require("./Time")
-const TTL_SECONDS = 300 * 10; // 5 minutes x 10
+const TTL_SECONDS = 30000 * 10; // 5 minutes x 10
 const path = require('path');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 
-const mysqlPool = mysql.createPool({
+const mysqlPool = mysql.createPool({ 
   host: keys.myHost.trim(),
   user: keys.myUser.trim(),
   password: keys.myPassword.trim(),
@@ -152,8 +152,6 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
 
       console.log("🚀 Transaction COMMITTED for key [" + key + "]");
       
-      console.log("🚀 Transaction COMMITTED for key [" + key + "]");
-
       try {
       await redisClient.set(key, JSON.stringify(mysqlResult), 'EX', TTL_SECONDS);
     } catch (error) {
@@ -161,6 +159,7 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
       await redisClient.set(key, JSON.stringify(pgResult), 'EX', TTL_SECONDS);
       return "Successfully Added " + key +" on Postgres. Failed on mySql";
     }
+
     return "Successfully Added " + key;
 
 
@@ -183,102 +182,133 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
     
 
 /** Update in DB, refresh cache */
-const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery) => {
+const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery, replacements = []) => {
   try {
-    let pgResult;
-    let mysqlResult;
-    let mysqlChecks = false;
-    let pgChecks = false;
-    let dbOperationsChecks = false;
-    let redisOperationsChecks = false;
+    let mysqlResult = null;
+    let pgResult = null;
+    let result = null;
 
+    let mysqlSuccess = false;
+    let pgSuccess = true;
+
+    console.log(`Updating MySQL and PostgreSQL for key: [${key}]`);
+
+    // Database Updates
     try {
-      console.log("Updating mySql and pg for key: [" +key+"]")
-      [mysqlResult] = await mysqlPool.query(mysqlUpdateQuery);
-      mysqlChecks = true;
-      console.log("Updating mySql for key: [" +key+"]");
 
-      pgResult = await pgClient.query(pgUpdateQuery, { type: pgClient.QueryTypes.UPDATE });
-      pgChecks = true;
-      if(pgChecks === true && mysqlChecks === true){
-        dbOperationsChecks = true;
+         // Begin transaction
+      await mysqlPool.beginTransaction();
+      console.log(`MySQL Transaction began for key: [${key}]`);
+
+      // MySQL Update
+      [mysqlResult] = await mysqlPool.query(mysqlUpdateQuery, replacements);
+      mysqlSuccess = true;
+      console.log(`✅ MySQL update successful for key: [${key}]`);
+    // Optional: check affected rows
+    if (result.affectedRows === 0) {
+       console.log(`No record found to update for productId: ${productId}`);
+    }
+      // PostgreSQL Update
+//      pgResult = await pgClient.query(pgUpdateQuery, replacements);  // assume replacements is an array
+//      pgSuccess = true;
+//      console.log(`✅ PostgreSQL update successful for key: [${key}]`);
+
+    } catch (dbErr) {
+      console.error(`❌ DB update error for key: [${key}]`, dbErr);
+
+      if (!mysqlSuccess && !pgSuccess) {
+        return `❌ Both MySQL and PostgreSQL update failed for key: [${key}]\n${dbErr}`;
       }
-
-    } catch (mysqlErr) {
-
-      dbOperationsChecks = false;
-
-      if(mysqlChecks ===true){
-        console.log("Failed to add mysql for key: [" +key+"]")
-      return "Failed to add to db for key [" + key +"] \n"+ mysqlErr
-
-      }else if(pgChecks){
-        console.log("Failed to add pg for key: [" +key+"]")
-      return "Failed to add to db pg for key [" + key +"] \n"+ mysqlErr
-
-      }else if(pgChecks === false && mysqlChecks === false){
-
-        console.log("Failed to add mysql and pg for key: [" +key+"]")
-      return "Failed to add to db for key [" + key +"] \n"+ mysqlErr
-
+      if (!mysqlSuccess) {
+        console.warn(`⚠️ MySQL update failed for key: [${key}], falling back to PG result.`);
+        result = pgResult;
+      } else if (!pgSuccess) {
+        console.warn(`⚠️ PostgreSQL update failed for key: [${key}], falling back to MySQL result.`);
+        result = mysqlResult;
       }
     }
 
-    if(dbOperationsChecks){
-    
-      // Check if the key exists in Redis
-      const exists = await redisClient.exists(key);
-      if (exists) {
-        console.log("Updating existing Redis key : [" + key + "]");
-        await redisClient.set(key, JSON.stringify(mysqlResult), 'EX', TTL_SECONDS);
-      } else {
-        console.log("Key not found in Redis, adding new key : [" + key + "]");
-        await redisClient.set(key, JSON.stringify(mysqlResult), 'EX', TTL_SECONDS);
-      }
-    }else{
-      if(mysqlChecks===false){
-        console.log("mysql Failed");
-         // Check if the key exists in Redis
-      const exists = await redisClient.exists(key);
-      if (exists) {
-        console.log("mysql Failed: Updating existing Redis key : [" + key + "]");
-        await redisClient.set(key, JSON.stringify(pgResult), 'EX', TTL_SECONDS);
-        console.log("Updated with only mysql")
-
-      } else {
-        console.log("mysql Failed: Key not found in Redis, adding new key : [" + key + "]");
-        await redisClient.set(key, JSON.stringify(pgResult), 'EX', TTL_SECONDS);
-        console.log("Updated with only pgResult")
-      }
-      }
-
+    // If both DB operations succeeded, prefer MySQL result
+    if (mysqlSuccess && pgSuccess) {
+      result = mysqlResult;
     }
-    console.log("Now Updating Redis key : [" + key + "]" )
-    await redisClient.setEx(key, TTL_SECONDS, JSON.stringify(result));
 
+    // Redis Cache Update
+    if (result) {
+      console.log(`🔁 Caching result to Redis for key: [${key}]`);
+      await redisClient.setEx(key, TTL_SECONDS, JSON.stringify(productId,
+      itemsRemaining,
+      lastUpdated));
+    } else {
+      console.warn(`⚠️ No result to cache for key: [${key}]`);
+    }
+    // Commit transaction
+    await mysqlPool.commit();
 
-    return result;
-  } catch (err) {
-    console.error( `updateCachedOrQuery error:`, err.message);
-    throw err;
+    return res.status(200).send({
+      success: true,
+      message: "✅ Available item updated successfully",
+      data: { productId, itemsRemaining, lastUpdated }
+    });
+
+  } catch (error) {
+    await connection.rollback(); // Rollback transaction on error
+    console.error("🔥 updateAvailableItems error:", error.message);
+    return res.status(500).send({
+      success: false,
+      message: "❌ Failed to update available item",
+      error: error.message
+    });
+
   }
 };
+
 
 /** Remove from DB, delete from Redis */
-const removeCachedAndQuery = async (key, mysqlDeleteQuery, pgDeleteQuery) => {
+const removeCachedAndQuery = async (key, mysqlDeleteQuery, pgDeleteQuery, replacements = []) => {
   try {
+    let mysqlSuccess = false;
+    let pgSuccess = true;
+    console.log("Product Id to be deleted :" + replacements + "mysql query: " + mysqlDeleteQuery)
+    // Try MySQL delete
     try {
-      await mysqlPool.query(de);
+      await mysqlPool.query(mysqlDeleteQuery, replacements);
+      mysqlSuccess = true;
+      console.log(`✅ MySQL delete successful for key:[${replacements}] from [${key}]`);
     } catch (mysqlErr) {
-      await pgClient.query(pgDeleteQuery, { type: pgClient.QueryTypes.DELETE });
+      console.warn(`⚠️ MySQL delete failed for key: [${key}], Failed: `, mysqlErr.message);
+/*
+      // Fallback to PostgreSQL delete
+      try {
+        await pgClient.query(pgDeleteQuery, replacements);
+        pgSuccess = true;
+        console.log(`✅ PostgreSQL delete successful for key: [${key}]`);
+      } catch (pgErr) {
+        console.error(`❌ Both MySQL and PostgreSQL delete failed for key: [${key}]`, pgErr.message);
+        throw pgErr; // rethrow to outer catch
+      } */
     }
-    await redisClient.del(key);
-    return { success: true };
+
+    // Remove from Redis
+    try {
+      const redisResult = await redisClient.del(key);
+      console.log(`🗑️ Redis key deleted: [${key}]`);
+    } catch (redisErr) {
+      console.warn(`⚠️ Failed to delete Redis key: [${key}]`, redisErr.message);
+    }
+
+    return {
+      success: true,
+      mysqlDeleted: mysqlSuccess,
+      pgDeleted: pgSuccess,
+    };
+
   } catch (err) {
-    console.error( `removeCachedAndQuery error:`, err.message);
+    console.error(`🔥 removeCachedAndQuery error:`, err.message);
     throw err;
   }
 };
+
 
 module.exports = {
   getCachedOrQuery,

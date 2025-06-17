@@ -1,5 +1,9 @@
 const mysqlPool = require("../config/db")
-const addCachedAndQuery = require("../utils/ControllerHandler")
+const {  getCachedOrQuery,
+  addCachedAndQuery,
+  updateCachedOrQuery,
+  removeCachedAndQuery} = require("../utils/ControllerHandler");
+const { formattedDate } = require("../utils/Time");
 
 /*
 const addNewCandy = async(req, res) =>{
@@ -162,7 +166,9 @@ console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
 }
 const deleteItem = async(req, res) =>{
 
-const {productId} = req.body;  
+const {productId} = req.body;
+
+  console.log("Product Id [" + productId + "] to be removed")
 
 try{
 const deleteAvailableResults = deleteAvailableItems(productId);
@@ -310,37 +316,37 @@ return data;
 
 async function deleteCartList(productId){
 
-  const data = await mysqlPool.query('DELETE FROM cartList WHERE productId = :productId', replacements); 
+  const data = await mysqlPool.query('DELETE FROM cartList WHERE productId = :productId', productId); 
 return data;
 }
 
 async function deleteEstimates(productId){
-  const data = await mysqlPool.query('DELETE FROM estimates WHERE productId = :productId', replacements); 
+  const data = await mysqlPool.query('DELETE FROM estimates WHERE productId = :productId', productId); 
 return data;
 }
 
 async function deletePriceTracing(productId){
 
-  const data = await mysqlPool.query('DELETE FROM priceTracing WHERE productId = :productId', replacements); 
+  const data = await mysqlPool.query('DELETE FROM priceTracing WHERE productId = :productId', productId); 
 
 return data;
 }
 
 async function deleteStockItems(productId){
 
-  const data = await mysqlPool.query('DELETE FROM stockItems WHERE productId = :productId', replacements); 
+  const data = await mysqlPool.query('DELETE FROM stockItems WHERE productId = :productId', productId); 
 return data;
 
 }
 
 async function deleteProductItemPricing(productId){
-  const data = await mysqlPool.query('DELETE FROM productPricing WHERE productId = :productId', replacements); 
+  const data = await mysqlPool.query('DELETE FROM productPricing WHERE productId = :productId', productId); 
 return data;
 
 }
 
 async function deleteProductList(productId){
-  const data = await mysqlPool.query('DELETE FROM productList WHERE productId = :productId', replacements); 
+  const data = await mysqlPool.query('DELETE FROM productList WHERE productId = :productId', productId); 
 return data;
 
 }

@@ -12,9 +12,10 @@ let keyExist = false;
 
 const removeEstimateById = async(req, res) =>{
     
+
     try {
 
-        const productId = req.params.id;
+        
 
         if(!productId){
             return res.status(404).send({
@@ -81,10 +82,11 @@ const removePriceTracing = async(req, res) =>{
             try {
 				
 
-                const data = await dbSequelize.query('DELETE FROM priceTracing WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
+                const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
+                const replacements = [productId];
+
+                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
 
                 res.status(200).send({
                     success:true,
@@ -219,30 +221,7 @@ const addPriceTracing  = async(req, res) => {
         const replacements = [productId, accAmount,lastUpdated];
 
         // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements,
-            type: dbSequelize.QueryTypes.INSERT
-        });            
-            
-            
-            
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CANNOT INSERT DATA TO CART DUE TO A ERROR",
-
-                })
-        }else{
-
-            const [data] = await dbSequelize.query('SELECT * FROM priceTracing')
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-
-
-            res.status(201).send({
-                success:true, 
-                message:"New Recored Inserted TO Price Tracing and Removed Key on Redis Successfully",
-            })
-        }
+        addCachedAndQuery("priceTracing",query, query, replacements)
         
         
         }
@@ -260,63 +239,38 @@ const addPriceTracing  = async(req, res) => {
 
 //deletins
 
-const deletePriceTracing = async(req, res) =>{
+const deletePriceTracing = async (req, res) => {
+    const productId = req.params.id;
 
-    const productId  = req.params.id; // Extract student ID from the request URL
+    console.log(`[deletePriceTracing] Requested deletion for productId: ${productId}`);
 
-    try {
-
-        const productId = req.params.id;
-        console.log("ID Pricing to delte");
-        console.log(productId);
-
-        if(!productId){
-            return res.status(404).send({
-                success:false,
-                message:"PLease provide student Id => " + productId
-            })
-        }else{
-
-
-            try {
-				
-
-                const data = await dbSequelize.query('DELETE FROM priceTracing WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
-
-                res.status(200).send({
-                    success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
-                })
-
-
-
-            } catch (error) {
-                console.log(error)
-                res.status(500).send({
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                })
-                
-            }    
-        
-	 
-			
-        }
-        
-    } catch (error) {
-        console.log(error)
-        res.status(500).send({
-            success:false,
-            message: "Error in Deleting Student",
-            error
-        })
+    if (!productId || isNaN(productId)) {
+        return res.status(400).json({
+            success: false,
+            message: `Invalid or missing productId: ${productId}`
+        });
     }
 
-}
+    try {
+        const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+        const pgQuery = `DELETE FROM ${cacheKey} WHERE productId = $1`;
+        const replacements = [productId];
+
+        await removeCachedAndQuery(cacheKey, mysqlQuery, pgQuery, replacements);
+
+        return res.status(200).json({
+            success: true,
+            message: `Product ID [${productId}] deleted successfully.`
+        });
+    } catch (error) {
+        console.error(`[deletePriceTracing] Error deleting productId ${productId}:`, error);
+        return res.status(500).json({
+            success: false,
+            message: "An error occurred while attempting to delete the price tracing record.",
+            error: error.message || error
+        });
+    }
+};
 
 // UPdating 
 

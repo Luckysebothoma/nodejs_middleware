@@ -1,5 +1,10 @@
 const dbSequelize = require("../config/db")
-const QueryTypes = require("sequelize")
+const QueryTypes = require("sequelize");
+const {  getCachedOrQuery,
+  addCachedAndQuery,
+  updateCachedOrQuery,
+  removeCachedAndQuery} = require("../utils/ControllerHandler");
+const { formattedDate } = require("../utils/Time");
 
 const cacheKey = 'productItemPricing'; // Key to store the list in Redis
 
@@ -90,30 +95,7 @@ const addProductItemPricing = async(req, res) => {
         const replacements = [productId, productDescription,itemGroup,itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission];
 
         // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements,
-            type: dbSequelize.QueryTypes.INSERT
-        });            
-            
-            
-            
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CANNOT INSERT DATA TO ProductItemPricing DUE TO A ERROR",
-
-                })
-        }else{
-
-
-            const [data] = await dbSequelize.query('SELECT * FROM productItemPricing')
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-
-            return res.status(200).send({
-                success:true,
-                message:"Successfully added product to pricing"
-            })
-        }
+        addCachedAndQuery(cacheKey, query, query, replacements);
         
         
         }
@@ -132,13 +114,14 @@ const addProductItemPricing = async(req, res) => {
 const deleteProductItemPricing = async(req, res) =>{
 
     const productId  = req.params.id; // Extract student ID from the request URL
+    console.log("removeEstimateById Request Params: ", req.params);
+    console.log("removeEstimateById Product ID: ", productId);
 
     try {
 
-        const { productId } = req.body;
 
-        console.log("ID Pricing to delte");
-        console.log(productId);
+               console.log(formattedDate() + "ID Pricing to delte: " + productId);
+
 
         if(!productId){
             return res.status(404).send({
@@ -150,18 +133,17 @@ const deleteProductItemPricing = async(req, res) =>{
 
             try {
 				
+const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
+                const replacements = [productId];
 
-                const data = await dbSequelize.query('DELETE FROM ProductItemPricing WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
+                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+
 
                 res.status(200).send({
-                    success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
-                })
-
-
+                    success: true,
+                    message: "Successfully deleted " + replacements + " from " + cacheKey
+                });
 
             } catch (error) {
                 console.log(error)

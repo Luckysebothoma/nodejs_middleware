@@ -331,10 +331,11 @@ const deleteProduct = async(req, res) =>{
             try {
 				
 
-                const data = await dbSequelize.query('DELETE FROM productList WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
+const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
+                const replacements = [productId];
+
+                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
 
                 res.status(200).send({
                     success:true,
@@ -404,30 +405,7 @@ const addProduct = async(req, res) => {
         const replacements = [productId, productName,productFlavor,productPrice, image_url];
 
         // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements,
-            type: dbSequelize.QueryTypes.INSERT
-        });            
-            // 
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CNNOT INSERT DATA TO CART DUE TO A ERROR",
-                })
-        }else{
-                
-                 // Key to store the list in Redis
-                // Cache the data in Redis (set it for 1 hour)
-                client.del(cacheKey, (err) => { 
-                    if (err) 
-                        return res.status(500).send(err); 
-                    res.send('Key deleted successfully!'); });
-                // 
-                res.status(201).send({
-                    success:true, 
-                    message:"New Recored Inserted TO ProductList Successfully",
-                })
-        }
+        addCachedAndQuery(cacheKey, query, query, replacements);
         
         
         }

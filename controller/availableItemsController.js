@@ -4,18 +4,20 @@ const redis = require("../config/redisClient")
 const QueryTypes = require("sequelize")
 const cacheKey = 'availableItems'; // Key to store the list in Redis
 let keyExist = false;
-const { getCachedOrQuery,
+const {  getCachedOrQuery,
   addCachedAndQuery,
-updateCachedOrQuery, 
-removeCachedAndQuery,
-} = require  ("../utils/ControllerHandler")
+  updateCachedOrQuery,
+  removeCachedAndQuery} = require("../utils/ControllerHandler");
+const { formattedDate } = require("../utils/Time");
+
 const { key } = require("../external-redis-api/config")
 
 const removeAvailableItemsById = async(req, res) =>{
- /*   
-    try {
 
-        const productId = req.params.id;
+
+            const productId = req.params.id;
+    console.log("Attempting to remove available id[" + productId + "]")
+    try {
 
         if(!productId){
             return res.status(404).send({
@@ -28,14 +30,18 @@ const removeAvailableItemsById = async(req, res) =>{
             try {
 				
 
-                const data = await dbSequelize.query('DELETE FROM availableItems WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
+                
+
+                const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
+                const replacements = [productId];
+
+                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+
 
                 res.status(200).send({
                     success:true,
-                    message:"ID [" + lastUpdated +"] DELETED Successfully"
+                    message:"ID [" + productId +"] DELETED Successfully"
                 })
 
 
@@ -62,7 +68,7 @@ const removeAvailableItemsById = async(req, res) =>{
             error
         })
     }
-*/
+
 
 
 
@@ -93,12 +99,13 @@ const getAvailableItems = async (req, res) => {
 };
 
 const deleteAvailableItems = async(req, res) =>{
-    
+            const productId = req.params.id;
+        console.log(formattedDate() + "ID Pricing to delte: " + productId);
+
     try {
 
-        const lastUpdated = req.params.id;
 
-        if(!lastUpdated){
+        if(!productId){
             return res.status(404).send({
                 success:false,
                 message:"PLease provide student Id => " + lastUpdated
@@ -108,14 +115,16 @@ const deleteAvailableItems = async(req, res) =>{
 
             try {
 				
-                const data = await dbSequelize.query('DELETE FROM availableItems WHERE lastUpdated = :lastUpdated', {
-                    replacements: { lastUpdated }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
+const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
+                const replacements = [productId];
+
+                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+
 
                 res.status(200).send({
                     success:true,
-                    message:"ID [" + lastUpdated +"] DELETED Successfully"
+                    message:"ID [" + productId +"] DELETED Successfully"
                 })
 
 
@@ -172,53 +181,28 @@ const updateAvailableItems = async(req, res) => {
         // Parameterized query with replacements
         const replacements = [itemsRemaining, lastUpdated, productId];
 
-        // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements
-        });            
-            
-            
-            
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CNNOT INSERT DATA TO CART DUE TO A ERROR",
-
-                })
-        }else{
-    
-                    try {
-                        const [data] = await dbSequelize.query('SELECT * FROM availableItems')
-                        const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-
-                        
-                        res.status(201).send({
-                        success:true, 
-                        message:"New Recored Updated Available Items was Successfully and 'cacheKey deleted successfully!'" + cacheKey,
-                        })
-
-                    } catch (error) {
-                        // We Failed to Update Table, Now Remove it, It will be updated on GetData
-                        removeData(cacheKey);
-                        console.log("Error on UpdateAvailItems \n " + error)
-                    }
-
-// 
-        }
+           // Call reusable function
+        const result = await updateCachedOrQuery(key, mysqlUpdateQuery, pgUpdateQuery, replacements);
         
+        // respond with result
+        return res.status(200).send({
+        success: true,
+        message: "✅ Available items updated successfully",
+        result
+        });
         
-        }
+    }
 
 
 
     } catch (error) {
         console.log(error)
-        res.status(404).send({
-            success:false,
-            message:"Error in create Student API ",
-            error
-        })
-        
+        return res.status(500).send({
+        success: false,
+        message: "❌ Error while updating available items",
+        error: error.message
+        });
+            
     }
 
 }
@@ -251,32 +235,7 @@ const addAvailableItems = async(req, res) => {
         // Parameterized query with replacements
         const replacements = [productId, itemsRemaining, lastUpdated];
 
-        // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements,
-            type: dbSequelize.QueryTypes.INSERT
-        });            
-            
-            
-            
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CNNOT INSERT DATA TO CART DUE TO A ERROR",
-
-                })
-        }else{
-
-            const [data] = await dbSequelize.query('SELECT * FROM availableItems')
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-
-            res.status(201).send({
-                success:true, 
-                message:"New Recored Inserted TO Available Items was Successfully and 'cacheKey deleted successfully!' "+ cacheKey,
-            })
-
-                
-        }
+        addCachedAndQuery("availableItems", query, query, replacements);
         
         
         }

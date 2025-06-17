@@ -107,31 +107,7 @@ const add2Pricing = async(req, res) => {
         const replacements = [productId, costPerItem,sellingPrice,productCommission, productProfit, productQuantity, productSize];
 
         // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements,
-            type: dbSequelize.QueryTypes.INSERT
-        });            
-            
-            
-            
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CANNOT INSERT DATA TO CART DUE TO A ERROR",
-
-                })
-        }else{
-            const [data] = await dbSequelize.query('SELECT * FROM productPricing')
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-
-            res.status(201).send({
-                success:true, 
-                message:"New Recored Inserted TO CART Successfully",
-            })
-
-
-                
-        }
+        addCachedAndQuery(cacheKey, query, query, replacements);
         
         
         }
@@ -238,9 +214,8 @@ const deletePricing = async(req, res) =>{
 
     try {
 
-        const productId = req.params.id;
-        console.log("ID Pricing to delte");
-        console.log(productId);
+                console.log(formattedDate() + "ID Pricing to delte: " + productId);
+
 
         if(!productId){
             return res.status(404).send({
@@ -253,10 +228,12 @@ const deletePricing = async(req, res) =>{
             try {
 				
 
-                const data = await dbSequelize.query('DELETE FROM productPricing WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
+            const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                            const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
+                            const replacements = [productId];
+            
+                            await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+              
 
                 res.status(200).send({
                     success:true,
