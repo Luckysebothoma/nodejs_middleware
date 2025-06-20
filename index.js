@@ -167,6 +167,7 @@ app.post('/frontend-console-log', (req, res) => {
   const { log } = req.body;
   console.log(formattedDate() + `[Frontend Log] 📘 ${log}`);
   res.status(200).send('Log received: '+ formattedDate());
+  
 });
 
 app.post('/frontend-error', (req, res) => {
@@ -294,6 +295,7 @@ const redisUpload = multer(); // or multer({ storage: ... }) if needed
     // ✅ Route definition after client is connected
     app.get('/api/image/:id', async (req, res) => {
       const productId = req.params.id;
+      
       const key = `Product:Product_${productId}:base64`;
 
 

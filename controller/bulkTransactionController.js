@@ -77,7 +77,7 @@ const addNewCandy_with_image = async(req,res) => {
     file.size
   ];
 
-  addCachedAndQuery.addCachedAndQuery("images", imageInsertQuery,imageInsertQuery,imageReplacements);
+  addCachedAndQuery("images", imageInsertQuery,imageInsertQuery,imageReplacements);
 
 
   //await mysqlPool.query(imageInsertQuery, imageReplacements);
@@ -202,7 +202,6 @@ res.status(200).send({
 
 }
 
-
 // Reusable function to insert product records
 async function addProductRecord(addProductListRequest) {
 
@@ -225,7 +224,7 @@ const pgInsertQuery = `
 
 const replacements = [addProductListRequest.productId, addProductListRequest.productName,addProductListRequest.productFlavor,addProductListRequest.productPrice, addProductListRequest.image_url];
 
-const result = addCachedAndQuery.addCachedAndQuery(key,query,pgInsertQuery, replacements);
+const result = addCachedAndQuery(key,query,pgInsertQuery, replacements);
 // Execute the query
 // const result = await mysqlPool.query(query, replacements);
 
@@ -256,7 +255,7 @@ async function addYummyRecord(addProductPricingRequest) {
     addProductPricingRequest.productSize
   ];
 
-  const result = addCachedAndQuery.addCachedAndQuery(key, query, pgInsertQuery, replacements);
+  const result = addCachedAndQuery(key, query, pgInsertQuery, replacements);
 
   return result;
 }
@@ -278,7 +277,7 @@ async function addAvailableItems(addAvailableItemsRequest) {
     addAvailableItemsRequest.lastUpdated
   ];
 
-  const result = addCachedAndQuery.addCachedAndQuery(key, query, pgInsertQuery, replacements);
+  const result = addCachedAndQuery(key, query, pgInsertQuery, replacements);
 
 return result;
 }
@@ -301,7 +300,7 @@ async function addPriceTrace(addPriceTracing) {
     addPriceTracing.lastUpdated
   ];
 
-  const result = addCachedAndQuery.addCachedAndQuery(key, query, pgInsertQuery, replacements);
+  const result = addCachedAndQuery(key, query, pgInsertQuery, replacements);
 
 return result;
 }

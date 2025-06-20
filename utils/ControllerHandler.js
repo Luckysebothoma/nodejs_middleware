@@ -205,7 +205,7 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery, replace
       mysqlSuccess = true;
       console.log(`✅ MySQL update successful for key: [${key}]`);
     // Optional: check affected rows
-    if (result.affectedRows === 0) {
+    if (mysqlResult.affectedRows === 0) {
        console.log(`No record found to update for productId: ${productId}`);
     }
       // PostgreSQL Update
@@ -231,6 +231,8 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery, replace
     // If both DB operations succeeded, prefer MySQL result
     if (mysqlSuccess && pgSuccess) {
       result = mysqlResult;
+    }else{
+      console.warn(`⚠️ Only one DB operation succeeded for key: [${key}]. Using fallback result.`);
     }
 
     // Redis Cache Update

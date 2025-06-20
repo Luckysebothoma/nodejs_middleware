@@ -51,7 +51,9 @@ router.delete("/deleteProductbyId", deleteItem);
 
 // Update image
 router.put('/:id', upload.single('image'), async (req, res) => {
+
   const { originalname, mimetype, size, buffer } = req.file;
+  
   if(!originalname || !mimetype || !size || !buffer )
     console.log("Error: Missing Image field")
   await imageService.updateImage(req.params.id, { filename: originalname, mimetype, size, buffer });

@@ -130,7 +130,7 @@ const updateProduct = async(req, res) => {
             try {
     
                 // Construct the SQL UPDATE statement with replacements
-                const sql = `
+                const query = `
                 UPDATE productList 
                 SET 
                     productName = :productName, 
@@ -141,16 +141,15 @@ const updateProduct = async(req, res) => {
                     productId = :productId `;
             
                 // Execute the UPDATE statement with replacements , ,,
-                const data = await dbSequelize.query(sql, {
-                  replacements: {
+                const replacements= [
                     productId,
                     productName,
                     productFlavor,
                     productPrice,
                     image_url
-                  },
-                  type: QueryTypes.UPDATE
-                });
+                ];
+                console.log('updating producrt List with replacements: ', replacements);
+                const data = await updateCachedOrQuery(cacheKey, query, query, replacements);
 
 
             }catch(error ){
