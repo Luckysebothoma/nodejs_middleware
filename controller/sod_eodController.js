@@ -1,4 +1,6 @@
  
+import { query } from "express";
+import { getData, keyExists, setDataWithNoExpiry } from "../config_redis/redis_config.js";
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 
@@ -14,11 +16,11 @@ const cacheKey = 'sodEodItems'; // Key to store the list in Redis
 
 
 const getSodEodList = async(req, res) =>{
-     console.log(`${cacheKey} backend started...`);
+  console.log(`${cacheKey} backend started...`);
 
   const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
   const _pgQuery = `SELECT * FROM ${cacheKey}`;
-  console.log("Now Quering : Key[" + cacheKey + "] mysl:[" + _mysqlQuery + "] pgSql:" + _pgQuery + "]");
+  console.log("Now Quering : Key[" + cacheKey + "] mysl:" + _mysqlQuery + "pgSql:" + _pgQuery);
 
   try {
 
@@ -32,7 +34,6 @@ const getSodEodList = async(req, res) =>{
       error: error.message || error,
     });
   }
-
 }
 
 const addSodEodList = async(req, res) => {
@@ -104,17 +105,22 @@ const addSodEodList = async(req, res) => {
 }
 
 const getSodEodItems = async(req, res) =>{
+
     try {
 
+
+
+        const query = `SELECT * FROM  ${cacheKey}`;
             // If not in cache, query the database
-        console.log('Cache miss: Querying database');
-        const [data] = await dbSequelize.query('SELECT * FROM  sodEodItems')
-        if (!data) { 
+        //console.log('Cache miss: Querying database');
+        const dbDataResult = await getCachedOrQuery(cacheKey,query, query);
+
+        if (!dbDataResult) { 
             return res.status(404).send({
                 success: false,
                 message: "Resource not found"
             });
-        } else if (data.length === 0) {
+        } else if (!dbDataResult.length || dbDataResult.length === 0) {
             return res.status(200).send({
                 success: true,
                 data: [],
@@ -122,12 +128,14 @@ const getSodEodItems = async(req, res) =>{
             });
         }else{
             
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
+            //const objectsOnly = dbData.filter(item => typeof item === 'object' && !Array.isArray(item));
             // Cache the data in Redis (set it for 1 hour)
 //            await setData(cacheKey, objectsOnly, 3600); // Cache for 1 hour
+            await setDataWithNoExpiry(cacheKey, dbDataResult)
 
             // Send the filtered data to the client
-            res.json(objectsOnly);
+             return res.status(200).send(dbDataResult);
+            
         }
 
 

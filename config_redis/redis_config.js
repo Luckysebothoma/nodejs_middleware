@@ -21,20 +21,26 @@ redisClient.connect()
 // Set data with optional expiry (default: 3600s)
 const setData = async (key, value, expiry = 3600) => {
   try {
+    const ttl = parseInt(expiry, 10);
+    if (isNaN(ttl)) throw new Error(`Invalid expiry: ${expiry}`);
+    
     await redisClient.set(key, JSON.stringify(value), {
-      EX: expiry,
+      EX: ttl
     });
-    console.log(`✅ Redis: Set key "${key}" with expiry ${expiry}s`);
+
+    console.log(`✅ Redis: Set key "${key}" with expiry ${ttl}s`);
   } catch (err) {
     console.error(`❌ Redis: Error setting data for key "${key}":`, err);
   }
 };
+
 
 // Set data with no expiry (for static or persistent cache)
 const setDataWithNoExpiry = async (key, value) => {
   try {
     await redisClient.set(key, JSON.stringify(value));
     console.log(`✅ Redis: Set key "${key}" with no expiry`);
+    return true;
   } catch (err) {
     console.error(`❌ Redis: Error setting key "${key}" with no expiry:`, err);
   }
@@ -47,6 +53,7 @@ const getData = async (key) => {
     if (data) {
       console.log(`✅ Redis: Cache hit for key "${key}"`);
       return JSON.parse(data);
+      
     } else {
       console.log(`🔍 Redis: Cache miss for key "${key}"`);
       return null;

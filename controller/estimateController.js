@@ -71,47 +71,13 @@ const removeEstimateById = async(req, res) =>{
 
 
 const getEstimates = async(req, res) =>{
-/*    try {
-
-
-            const [data] = await dbSequelize.query('SELECT * FROM estimates')
-            if (!data) { 
-                return res.status(404).send({
-                    success: false,
-                    message: "Resource not found"
-                });
-            } else if (data.length === 0) {
-                return res.status(200).send({
-                    success: true,
-                    data: [],
-                    message: "No data available"
-                });
-            }else{
-                
-                const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-             // Cache the data in Redis (set it for 1 hour)
-
-                // Send the filtered data to the client
-                res.json(objectsOnly);
-            }
-
-
-    } catch (error) {
-        console.log(error)
-        res.status(500).send({
-            success:false,
-            message:"Error in getting all",
-            error
-        })
-    }
-*/
 
 
   console.log(`${cacheKey} backend started...`);
 
   const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
   const _pgQuery = `SELECT * FROM ${cacheKey}`;
-  console.log("Now Quering : Key[" + cacheKey + "] mysl:[" + _mysqlQuery + "] pgSql:" + _pgQuery + "]");
+  console.log("Now Quering : Key[" + cacheKey + "] mysql:[" + _mysqlQuery + "] pgSql:" + _pgQuery + "]");
 
   try {
 

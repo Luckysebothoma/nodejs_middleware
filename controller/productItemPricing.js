@@ -13,47 +13,24 @@ const cacheKey = 'productItemPricing'; // Key to store the list in Redis
 
 
 const getProductItemPricingList = async(req, res) =>{
-    try {
+  console.log(`${cacheKey} backend started...`);
 
-        // If not in cache, query the database
-        console.log('Cache miss: Querying database');
-        const [data] = await dbSequelize.query('SELECT * FROM productItemPricing')
-        if (!data) { 
-            return res.status(404).send({
-                success: false,
-                message: "Resource not found"
-            });
-        } else if (data.length === 0) {
-            return res.status(200).send({
-                success: true,
-                data: [],
-                message: "No data available"
-            });
-        }else{
-            
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-            try {
-                
-                           // Cache the data in Redis (set it for 1 hour)
+  const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
+  const _pgQuery = `SELECT * FROM ${cacheKey}`;
+  console.log("Now Quering : Key[" + cacheKey + "] mysl:" + _mysqlQuery + "pgSql:" + _pgQuery);
 
-           // Send the filtered data to the client
-           res.json(objectsOnly);
+  try {
 
-            } catch (error) {
-                console.error(error);
-            }
-        } 
-
-
-    } catch (error) {
-        console.log(error)
-        res.status(500).send({
-            success:false,
-            message:"Error in getting all",
-            error
-        })
-    }
-
+    const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
+    res.status(200).send(data);
+  } catch (error) {
+    console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
+    res.status(500).send({
+      success: false,
+      message: `Error fetching ${cacheKey}`,
+      error: error.message || error,
+    });
+  }
 
 }
 

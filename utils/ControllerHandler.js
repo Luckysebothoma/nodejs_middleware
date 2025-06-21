@@ -1,5 +1,5 @@
 import redisConfig from '../config_redis/redis_config.js';
-const { removeData, setData, getData, keyExists } = redisConfig;
+const { removeData, setData, getData, keyExists,  setDataWithNoExpiry} = redisConfig;
 import mysqlPool  from '../config/db.js';
 import { pgClient } from '../config/postgres.js';
 import { createConnection } from "mysql2/promise"; 
@@ -24,12 +24,16 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
   try {
     // 1. Check if data exists in Redis
     const cachedExists = await keyExists(key);
+
     if (cachedExists) {
+
       console.log(`[CACHE HIT] ${key}`);
       const cachedData = await getData(key);
+
       if (cachedData) {
-        console.log(`[CACHE DATA] ${key} : ${cachedData}`);
-        return JSON.parse(cachedData);
+        console.log(`[CACHE DATA] ${key} : ${cachedData.length}`);
+        return cachedData;
+
       } else {
         console.log(`[CACHE HIT EMPTY] ${key}`);
         return null;
@@ -45,15 +49,19 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
     }
 
     const connection = await mysqlPool.getConnection();
+    await connection.beginTransaction();
     console.log(`MySQL connected. Thread ID: ${connection.threadId}`);
 
     try {
+      console.log(`Key[ ${key}] Executing mysql query:`, mysqlQuery)
       const [mysqlResult] = await connection.query(mysqlQuery);
-      connection.release();
 
       if (mysqlResult?.length) {
-        console.log(`[MySQL SUCCESS] ${key} : ${JSON.stringify(mysqlResult)}`);
-        await setData(key, JSON.stringify(mysqlResult), "EX", TTL_SECONDS);
+        console.log(`[MySQL SUCCESS] ${key} : ${mysqlResult.length}`);
+        //await setData(key, JSON.stringify(mysqlResult), "EX", TTL_SECONDS);
+        await setDataWithNoExpiry(key, JSON.stringify(mysqlResult))
+
+        connection.release();
         return mysqlResult;
       } else {
         console.log(`[MySQL EMPTY RESULT] ${key}`);
@@ -63,6 +71,16 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
       connection.release();
       console.warn(`[MySQL ERROR] ${mysqlErr.message}`);
       throw mysqlErr;
+    }finally {
+      if(connection ){
+        try{
+
+          connection.release();
+          console.log("Mysql Connection Realeased");
+        }catch(err){
+          console.error("Error releasing mySQL connection:", err)
+        }
+      }
     }
 
   } catch (mysqlOrCacheErr) {
@@ -131,16 +149,18 @@ async function createTable() {
 
 /** Add to DB, cache result */
 const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) => {
+  let mysqlConnection = null;
+  if (mysqlPool) {
+    mysqlConnection = await mysqlPool.getConnection(); // `mysql2` style
+  } else {
+    throw new Error("mysqlPool is not defined or imported properly");
+  }
   try {
     let pgResult;
     let mysqlResult;
 
-    const mysqlConnection = await getConnection(); // `mysql2` style
-    console.log("Mysql connected:" +  mysqlConnection)
-    // For Sequelize, use transaction object; for node-postgres, use client.connect()
-    // Assuming pgClient is Sequelize instance:
-//    const pgTransaction = await pgClient.transaction();
-//    console.log("PG connected:" +  pgTransaction)
+    console.log("Mysql connected:" +  mysqlConnection);
+//console.log("PG connected:" +  pgTransaction)
 
     // Begin transactions on both databases
     await mysqlConnection.beginTransaction();
@@ -148,11 +168,8 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
 
     try {
       console.log("Now Adding New Key: " + key)
-
-      
-
       // Execute both inserts
-      await mysqlConnection.query(mysqlInsertQuery, values);
+      const mysqlResult = await mysqlConnection.query(mysqlInsertQuery, values);
       console.log("✅ mySql insert success [" + key + "]");
       // await pgClient.query(pgInsertQuery, { transaction: pgTransaction, replacements: values });
       // console.log("✅ PostgreSQL insert success [" + key + "]");
@@ -167,7 +184,8 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
       console.log("🚀 Transaction COMMITTED for key [" + key + "]");
       
       try {
-      await setData(key, JSON.stringify(mysqlResult), 'EX', TTL_SECONDS);
+      await setDataWithNoExpiry(key, mysqlResult);
+
     } catch (error) {
       console.log("Failed to add Redis key: "+ key +" \n " + error)
       await setData(key, JSON.stringify(pgResult), 'EX', TTL_SECONDS);
@@ -188,7 +206,9 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
     }
     } finally {
       // Release DB connections
-     // mysqlConnection.release();
+      mysqlConnection.release();
+      console.log("✅ mySql saved and released success [" + key + "]");
+
       // No need to release pgTransaction, Sequelize handles it
     }
       
