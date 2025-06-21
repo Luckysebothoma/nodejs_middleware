@@ -17,7 +17,6 @@ const mysqlPool = mysql.createPool({
 });
 */
 
-const cacheKey = "productList"
 /** Get from cache or fallback to DB query */
 
 const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
@@ -63,6 +62,8 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
 
         connection.release();
         return mysqlResult;
+
+
       } else {
         console.log(`[MySQL EMPTY RESULT] ${key}`);
         throw new Error("MySQL empty result");
@@ -149,9 +150,9 @@ async function createTable() {
 
 /** Add to DB, cache result */
 const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) => {
-  let mysqlConnection = null;
-  if (mysqlPool) {
-    mysqlConnection = await mysqlPool.getConnection(); // `mysql2` style
+    const mysqlConnection = await mysqlPool.getConnection(); // `mysql2` style
+
+    if (mysqlPool) {
   } else {
     throw new Error("mysqlPool is not defined or imported properly");
   }
@@ -176,7 +177,7 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
 
       // Commit both transactions
       await mysqlConnection.commit();
-      console.log("✅ mySql COMMITTED success [" + key + "]");
+      //console.log("✅ mySql COMMITTED success [" + key + "]");
 
      // await pgTransaction.commit();
      //       console.log("✅ PG COMMITTED success [" + key + "]");
@@ -184,11 +185,11 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
       console.log("🚀 Transaction COMMITTED for key [" + key + "]");
       
       try {
-      await setDataWithNoExpiry(key, mysqlResult);
+      await getCachedOrQuery(key, mysqlInsertQuery, mysqlInsertQuery)
 
     } catch (error) {
-      console.log("Failed to add Redis key: "+ key +" \n " + error)
-      await setData(key, JSON.stringify(pgResult), 'EX', TTL_SECONDS);
+//      console.log("Failed to add Redis key: "+ key +" \n " + error)
+//      await setData(key, JSON.stringify(pgResult), 'EX', TTL_SECONDS);
       return "Successfully Added " + key +" on Postgres. Failed on mySql";
     }
 
@@ -217,6 +218,8 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
 
 /** Update in DB, refresh cache */
 const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery, replacements = []) => {
+      const connection = await mysqlPool.getConnection()
+
   try {
     let mysqlResult = null;
     let pgResult = null;
@@ -226,16 +229,15 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery, replace
     let pgSuccess = true;
 
     console.log(`Updating MySQL and PostgreSQL for key: [${key}]`);
-
     // Database Updates
     try {
 
          // Begin transaction
-      await beginTransaction();
+      await connection.beginTransaction();
       console.log(`MySQL Transaction began for key: [${key}]`);
 
       // MySQL Update
-      [mysqlResult] = await query(mysqlUpdateQuery, replacements);
+      [mysqlResult] = await connection.query(mysqlUpdateQuery, replacements);
       mysqlSuccess = true;
       console.log(`✅ MySQL update successful for key: [${key}]`);
     // Optional: check affected rows
@@ -272,43 +274,38 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery, replace
     // Redis Cache Update
     if (result) {
       console.log(`🔁 Caching result to Redis for key: [${key}]`);
-      await setEx(key, TTL_SECONDS, JSON.stringify(productId,
-      itemsRemaining,
-      lastUpdated));
+      getCachedOrQuery(key, mysqlUpdateQuery, mysqlUpdateQuery);
+
     } else {
       console.warn(`⚠️ No result to cache for key: [${key}]`);
     }
     // Commit transaction
-    await commit();
+    await connection.commit();
 
-    return res.status(200).send({
-      success: true,
-      message: "✅ Available item updated successfully",
-      data: { productId, itemsRemaining, lastUpdated }
-    });
+    return  "✅ Available item updated successfully"
 
   } catch (error) {
     await connection.rollback(); // Rollback transaction on error
     console.error("🔥 updateAvailableItems error:", error.message);
-    return res.status(500).send({
-      success: false,
-      message: "❌ Failed to update available item",
-      error: error.message
-    });
+    return null
 
+  }finally{
+    connection.release();
   }
 };
 
 
 /** Remove from DB, delete from Redis */
 const removeCachedAndQuery = async (key, mysqlDeleteQuery, pgDeleteQuery, replacements = []) => {
+  
+  const connection = await mysqlPool.getConnection();
   try {
     let mysqlSuccess = false;
     let pgSuccess = true;
     console.log("Product Id to be deleted :" + replacements + "mysql query: " + mysqlDeleteQuery)
     // Try MySQL delete
     try {
-      await query(mysqlDeleteQuery, replacements);
+      await connection.query(mysqlDeleteQuery, replacements);
       mysqlSuccess = true;
       console.log(`✅ MySQL delete successful for key:[${replacements}] from [${key}]`);
     } catch (mysqlErr) {
