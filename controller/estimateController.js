@@ -1,13 +1,15 @@
-const dbSequelize = require("../config/db");
-const QueryTypes = require("sequelize");
 
-const { getCachedOrQuery,
+import TimeUtils from '../utils/Time.js';
+
+import ControllerHandler from "../utils/ControllerHandler.js";
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+const {
+  getCachedOrQuery,
   addCachedAndQuery,
-updateCachedOrQuery, 
-removeCachedAndQuery,
-} = require  ("../utils/ControllerHandler")
-
-
+  updateCachedOrQuery,
+  removeCachedAndQuery
+} = ControllerHandler;
  
 const cacheKey = 'estimates'; // Key to store the list in Redis
 
@@ -295,7 +297,7 @@ const updateEstimates= async(req, res) => {
                     lastUpdated, 
                     productId
                   },
-                  type: QueryTypes.UPDATE
+                  type: UPDATE
                 });
     
                 if(!data){
@@ -332,4 +334,4 @@ const updateEstimates= async(req, res) => {
     }
 }
 
-module.exports = {removeEstimateById, getEstimates,addEstimates, deleteEstimates, updateEstimates}
+export default {removeEstimateById, getEstimates,addEstimates, deleteEstimates, updateEstimates}

@@ -1,11 +1,14 @@
-const dbSequelize = require("../config/db")
-const QueryTypes = require("sequelize");
-const {  getCachedOrQuery,
+ 
+import ControllerHandler from "../utils/ControllerHandler.js";
+import TimeUtils from '../utils/Time.js';
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+const {
+  getCachedOrQuery,
   addCachedAndQuery,
   updateCachedOrQuery,
-  removeCachedAndQuery} = require("../utils/ControllerHandler");
-const { formattedDate } = require("../utils/Time");
-
+  removeCachedAndQuery
+} = ControllerHandler;
 const cacheKey = 'productItemPricing'; // Key to store the list in Redis
 
 
@@ -247,7 +250,7 @@ const updateProductItemPricing= async(req, res) => {
                         groupedProfit,
                         groupedCommission
                       },
-                      type: QueryTypes.UPDATE
+                      type: UPDATE
                     });
         
 
@@ -281,4 +284,4 @@ const updateProductItemPricing= async(req, res) => {
     }
         
 
-module.exports = {getProductItemPricingList, addProductItemPricing, deleteProductItemPricing, updateProductItemPricing }
+export default {getProductItemPricingList, addProductItemPricing, deleteProductItemPricing, updateProductItemPricing }

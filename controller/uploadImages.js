@@ -1,12 +1,21 @@
-const multer = require("multer");
-const dbSequelize = require("../config/db");
-const { QueryTypes } = require("sequelize");
-const { setData, getData } = require('../config_redis/redis_config');
+import multer, { memoryStorage } from "multer";
+import TimeUtils from '../utils/Time.js';
+import ControllerHandler from "../utils/ControllerHandler.js";
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+const {
+  getCachedOrQuery,
+  addCachedAndQuery,
+  updateCachedOrQuery,
+  removeCachedAndQuery
+} = ControllerHandler;
+
+import { setData, getData } from "../config_redis/redis_config.js"
 
 const cacheKey = "productImages";
 
 // Configure Multer to store files in memory
-const storage = multer.memoryStorage();
+const storage = memoryStorage();
 const upload = multer({ storage });
 
 // Middleware for handling file uploads
@@ -32,10 +41,10 @@ const uploadImages = async (req, res) => {
             // Use Sequelize's query to insert data into MySQL
             const query = 'INSERT INTO productImages (image_url, image_content) VALUES (?, ?)';
             
-            await dbSequelize.query(query, {
-                replacements: [imageName, imageBuffer],
-                type: QueryTypes.INSERT
-            });
+            const replacements = [imageName, imageBuffer]
+            await addCachedAndQuery(cacheKey,query,query,replacements)
+            res.status(200).send({ message: `Image ${imageName} uploaded successfully` });
+           
 
             console.log(`Image ${imageName} uploaded successfully.`);
         }
@@ -53,4 +62,4 @@ const uploadImages = async (req, res) => {
     }
 };
 
-module.exports = { uploadMiddleware, uploadImages };
+export default { uploadMiddleware, uploadImages };

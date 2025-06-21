@@ -64,8 +64,10 @@ function formattedDate() {
   
   return `${time}-${date}`;
 }
+
+
 // Export functions for use in other modules
-module.exports = {
+export default {
   getShortTime,
   getMidTime,
   getLongTime,

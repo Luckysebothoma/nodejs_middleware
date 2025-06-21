@@ -1,35 +1,48 @@
-const express = require("express");
-const { Model } = require("sequelize");
-const { Module } = require("module");
-const { getStudentByID, createStudent, updateStudent, deleteStudent } = require("../controller/studentController");
-const { getProductList, getProductByID, updateProduct, deleteProduct, addProduct , purgingProduct} = require("../controller/productController");
-const { getCartList, add2Cart, deleteCart } = require("../controller/cartController");
-const { getPricingList, updatePricingList, updateProductPricing } = require("../controller/pricingController");
-const { add2Pricing } = require("../controller/pricingController");
-const { getYummyList } = require("../controller/pricingController");
-const { updatePricing } = require("../controller/pricingController");
-const { deletePricing } = require("../controller/pricingController");
-const { addStock, addStockedItems, removeStockedItems, deleteStock } = require("../controller/stockItemController");
-const { addAvailableItems, getAvailableItems, updateAvailableItems, removeAvailableItemsById } = require("../controller/availableItemsController");
-const { addSodEodItems, deleteSodEodItems, getSodEodItems, updateSodEodItems, removeSodEodById, getSodEodList, addSodEodList } = require("../controller/sod_eodController");
-const { addEstimates, getEstimates, updateEstimates, removeEstimateById } = require("../controller/estimateController");
-const { addPriceTracing, getPriceTracing, updatePriceTracing, removePriceTracing } = require("../controller/priceTracingController");
-const { addProductItemPricing, getProductItemPricingList, updateProductItemPricing, createProductItemPricing, deleteProductItemPricing } = require("../controller/productItemPricing");
-const { addNewCandy, addNewCandy_with_image, deleteItem } = require("../controller/bulkTransactionController");
-const { uploadImages, uploadMiddleware} = require("../controller/uploadImages");
+import { Router } from "express"; 
+import productController from "../controller/productController.js";
+const { getProductList, getProductByID, updateProduct, deleteProduct, addProduct, purgingProduct } = productController;
 
+
+import cartController from "../controller/cartController.js";
+const { getCartList, add2Cart, deleteCart } = cartController;
+import pricingController from "../controller/pricingController.js";
+const { deletePricing, getPricingList, add2Pricing, getYummyList, updateProductPricing, updatePricingList } = pricingController;
+
+import stockItemController from "../controller/stockItemController.js";
+const { addStock, addStockedItems, removeStockedItems, deleteStock } = stockItemController;
+
+import availableItemsController from "../controller/availableItemsController.js";
+const { addAvailableItems, getAvailableItems, updateAvailableItems, removeAvailableItemsById } = availableItemsController;
+
+import sodEodController from "../controller/sod_eodController.js";
+const { addSodEodItems, deleteSodEodItems, getSodEodItems, updateSodEodItems, removeSodEodById, getSodEodList, addSodEodList } = sodEodController;
+
+import estimateController from "../controller/estimateController.js";
+const { addEstimates, getEstimates, updateEstimates, removeEstimateById } = estimateController;
+
+import priceTracingController from "../controller/priceTracingController.js";
+const { addPriceTracing, getPriceTracing, updatePriceTracing, removePriceTracing } = priceTracingController;
+
+import productItemPricingController from "../controller/productItemPricing.js";
+const { addProductItemPricing, getProductItemPricingList, updateProductItemPricing, createProductItemPricing, deleteProductItemPricing } = productItemPricingController;
+
+import bulkTransactionController from "../controller/bulkTransactionController.js";
+const { addNewCandy, addNewCandy_with_image, deleteItem } = bulkTransactionController;
+
+import uploadImagesController from "../controller/uploadImages.js";
+const { uploadImages, uploadMiddleware } = uploadImagesController;
 
 
 
 
 
 // Iamge
-const imageService = require("../services/imageService");
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() });
+//import imageService from "../services/imageService.js";
+import multer, { memoryStorage } from 'multer';
+const upload = multer({ storage: memoryStorage() });
 
 // ROuter OBj
-const router = express.Router();
+const router = Router();
 
 //Princing  Estimates
 //router.post("/uploadImages",uploadImages );
@@ -49,9 +62,10 @@ router.delete("/deleteProductbyId", deleteItem);
 
 // Upload Image
 
+/*
 // Update image
 router.put('/:id', upload.single('image'), async (req, res) => {
-
+console.log("Updating image for paramters:", req.params)
   const { originalname, mimetype, size, buffer } = req.file;
   
   if(!originalname || !mimetype || !size || !buffer )
@@ -59,7 +73,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
   await imageService.updateImage(req.params.id, { filename: originalname, mimetype, size, buffer });
   res.json({ message: 'Updated' });
 });
-
+ */
 
 // Price Tracing
 router.post("/addPriceTracing", addPriceTracing);
@@ -147,4 +161,4 @@ router.post("addNewCandy_with_image", addNewCandy_with_image)
 
 /// Adding SOD 
 
-module.exports = router;
+export default router;

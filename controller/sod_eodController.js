@@ -1,11 +1,15 @@
-const dbSequelize = require("../config/db")
-const QueryTypes = require("sequelize");
-const {  getCachedOrQuery,
+ 
+import ControllerHandler from "../utils/ControllerHandler.js";
+import TimeUtils from '../utils/Time.js';
+
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+const {
+  getCachedOrQuery,
   addCachedAndQuery,
   updateCachedOrQuery,
-  removeCachedAndQuery} = require("../utils/ControllerHandler");
-const { formattedDate } = require("../utils/Time");
-
+  removeCachedAndQuery
+} = ControllerHandler;
 const cacheKey = 'sodEodItems'; // Key to store the list in Redis
 
 
@@ -296,7 +300,7 @@ const updateSodEodItems = async(req, res) => {
                                 date, 
                                 productId
                               },
-                              type: QueryTypes.UPDATE
+                              type: UPDATE
                             });
             
             
@@ -378,10 +382,8 @@ const addSodEodItems = async(req, res) => {
         const replacements = [productName, itemsTaken,itemsRemaining, lastUpdated,productId];
      
         // Execute the query
-        const data = await dbSequelize.query(query, {
-            replacements,
-            type: dbSequelize.QueryTypes.INSERT
-        });            
+        const data = await addCachedAndQuery(cacheKey, query, query, replacements);
+
             
             
             
@@ -392,12 +394,7 @@ const addSodEodItems = async(req, res) => {
      
                 })
         }else{
-            const [data] = await dbSequelize.query('SELECT * FROM sodEodItems')
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-            //await setData(cacheKey, objectsOnly, 3600); // Cache for 1 hour
-            
-            
-                res.status(201).send({
+                res.status(200).send({
                     success:true, 
                     message:"Successfully Added New SodEod",
                 })
@@ -420,4 +417,4 @@ const addSodEodItems = async(req, res) => {
 
 }
 
-module.exports = {addSodEodList, getSodEodList, removeSodEodById, addSodEodItems, deleteSodEodItems, getSodEodItems, updateSodEodItems}
+export default {addSodEodList, getSodEodList, removeSodEodById, addSodEodItems, deleteSodEodItems, getSodEodItems, updateSodEodItems}

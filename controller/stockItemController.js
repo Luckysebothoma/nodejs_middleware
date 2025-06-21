@@ -1,9 +1,14 @@
-const {  getCachedOrQuery,
+import ControllerHandler from "../utils/ControllerHandler.js";
+import TimeUtils from '../utils/Time.js';
+
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+const {
+  getCachedOrQuery,
   addCachedAndQuery,
   updateCachedOrQuery,
-  removeCachedAndQuery} = require("../utils/ControllerHandler");
-const { formattedDate } = require("../utils/Time");
-
+  removeCachedAndQuery
+} = ControllerHandler;
 
 
 const cacheKey = 'stockedItems'; // Key to store the list in Redis
@@ -19,6 +24,7 @@ const getStockList = async(req, res) =>{
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
     res.status(200).send(data);
+
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
     res.status(500).send({
@@ -177,9 +183,12 @@ const addStockedItems = async(req, res) => {
         const replacements = [productId, stockDate,stockId,stockPrice, stockQuantity];
 
         
-        addCachedAndQuery("stockedItems",query, query, replacements)
+        const result = await addCachedAndQuery("stockedItems",query, query, replacements)
 
-        
+        res.status(200).send({
+            success:true,
+            message:"Stocked Item Added Successfully",
+        })
         
         }
 
@@ -256,4 +265,4 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
 }
 
 
-module.exports = {addStock, getStockList, deleteStock, addStockedItems, removeStockedItems}
+export default {addStock, getStockList, deleteStock, addStockedItems, removeStockedItems};

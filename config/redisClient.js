@@ -1,9 +1,9 @@
-const Redis = require('ioredis');
-const keys = require("../keys");
+import Redis from 'ioredis';
+import { redisHost, redisPort } from "../keys.js";
 
 const redis = new Redis({
-  host: keys.redisHost,
-  port: keys.redisPort,
+  host: redisHost,
+  port: redisPort,
 });
 
-module.exports = redis;
+export default redis;

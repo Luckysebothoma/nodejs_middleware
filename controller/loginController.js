@@ -1,10 +1,9 @@
-const dbSequelize = require("../config/db")
-const QueryTypes = require("sequelize")
+
 
 const getProductList = async(req, res) =>{
     try {
         
-        const [data] = await dbSequelize.query('SELECT * FROM productList')
+        const [data] = await _query('SELECT * FROM productList')
         if(!data){
             return res.status(404).send({
                 success:false,
@@ -44,9 +43,9 @@ const getProductByID = async(req,res) => {
                 })
         }else{
                 //const data = await dbSequelize.query('SELECT * FRO students WHERE id='+productId);
-                const data = await dbSequelize.query('SELECT * FROM productList WHERE id = :productId', {
+                const data = await _query('SELECT * FROM productList WHERE id = :productId', {
                     replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.SELECT
+                    type: _QueryTypes.SELECT
                 }); 
                 
                 if(!data){
@@ -112,7 +111,7 @@ const updateProduct= async(req, res) => {
                         productId = :productId `;
                 
                     // Execute the UPDATE statement with replacements , ,,
-                    const data = await dbSequelize.query(sql, {
+                    const data = await _query(sql, {
                       replacements: {
                         productId,
                         productName,
@@ -120,7 +119,7 @@ const updateProduct= async(req, res) => {
                         productPrice,
                         image_url
                       },
-                      type: QueryTypes.UPDATE
+                      type: UPDATE
                     });
         
                     if(!data){
@@ -175,13 +174,13 @@ const purgingProduct = async (req, res) => {
         }
 
         const deletePromises = [
-            dbSequelize.query('DELETE FROM productPricing WHERE productId = :productId', {
+            _query('DELETE FROM productPricing WHERE productId = :productId', {
                 replacements: { productId }, // Pass the parameter explicitly
-                type: dbSequelize.QueryTypes.DELETE
+                type: _QueryTypes.DELETE
             }),
-            dbSequelize.query('DELETE FROM productList WHERE productId = :productId', {
+            _query('DELETE FROM productList WHERE productId = :productId', {
                 replacements: { productId }, // Pass the parameter explicitly
-                type: dbSequelize.QueryTypes.DELETE
+                type: _QueryTypes.DELETE
             })
         ];
 
@@ -226,9 +225,9 @@ const deleteProduct = async(req, res) =>{
             try {
 				
 
-                const data = await dbSequelize.query('DELETE FROM productList WHERE productId = :productId', {
+                const data = await _query('DELETE FROM productList WHERE productId = :productId', {
                     replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
+                    type: _QueryTypes.DELETE
                 }); 
 
                 res.status(200).send({
@@ -293,9 +292,9 @@ const addProduct = async(req, res) => {
         const replacements = [productId, productName,productFlavor,productPrice, image_url];
 
         // Execute the query
-        const data = await dbSequelize.query(query, {
+        const data = await _query(query, {
             replacements,
-            type: dbSequelize.QueryTypes.INSERT
+            type: _QueryTypes.INSERT
         });            
             
             
@@ -330,4 +329,4 @@ const addProduct = async(req, res) => {
 
 }
 
-module.exports = {getProductList, getProductByID, updateProduct, deleteProduct, addProduct, purgingProduct}
+export default {getProductList, getProductByID, updateProduct, deleteProduct, addProduct, purgingProduct}

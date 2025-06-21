@@ -1,12 +1,14 @@
-const dbSequelize = require("../config/db");
-const QueryTypes = require("sequelize");
-const { getCachedOrQuery,
+
+import ControllerHandler from "../utils/ControllerHandler.js";
+import TimeUtils from '../utils/Time.js';
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+ 
+const { 
+  getCachedOrQuery,
   addCachedAndQuery,
-updateCachedOrQuery, 
-removeCachedAndQuery,
-} = require  ("../utils/ControllerHandler")
-
-
+  updateCachedOrQuery,
+  removeCachedAndQuery
+} = ControllerHandler;
 const cacheKey = 'productList';
 
 const getProductList = async (req, res) => {
@@ -425,4 +427,4 @@ const addProduct = async(req, res) => {
 
 }
 
-module.exports = {getProductList, getProductByID, updateProduct, deleteProduct, addProduct, purgingProduct}
+export default {getProductList, getProductByID, updateProduct, deleteProduct, addProduct, purgingProduct}

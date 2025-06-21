@@ -1,14 +1,11 @@
-const redisClient = require('../config/redisClient');
-//const { mysqlPool } = require('../config/db');
-const { pgClient } = require('../config/postgres');
-const mysql = require("mysql2/promise"); 
-const keys = require("../keys")
-const getShortTime = require("./Time")
+import redisConfig from '../config_redis/redis_config.js';
+const { removeData, setData, getData, keyExists } = redisConfig;
+import mysqlPool  from '../config/db.js';
+import { pgClient } from '../config/postgres.js';
+import { createConnection } from "mysql2/promise"; 
 const TTL_SECONDS = 30000 * 10; // 5 minutes x 10
-const path = require('path');
-const multer = require('multer');
-const { v4: uuidv4 } = require('uuid');
-
+import multer, { memoryStorage } from 'multer';
+/*
 const mysqlPool = mysql.createPool({ 
   host: keys.myHost.trim(),
   user: keys.myUser.trim(),
@@ -18,65 +15,82 @@ const mysqlPool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
 });
-
+*/
 
 const cacheKey = "productList"
 /** Get from cache or fallback to DB query */
 
 const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
-
   try {
-
-    const cached = await redisClient.get(key);
-    if (cached) {
-      console.log( `[CACHE HIT] ${key}`);
-    console.log( `${key} : Done Reading on Redis:` + cached );
-
-      //return JSON.parse(cached);
-      return JSON.parse(cached);
+    // 1. Check if data exists in Redis
+    const cachedExists = await keyExists(key);
+    if (cachedExists) {
+      console.log(`[CACHE HIT] ${key}`);
+      const cachedData = await getData(key);
+      if (cachedData) {
+        console.log(`[CACHE DATA] ${key} : ${cachedData}`);
+        return JSON.parse(cachedData);
+      } else {
+        console.log(`[CACHE HIT EMPTY] ${key}`);
+        return null;
+      }
     }
 
+    // 2. Cache miss – Query MySQL first
     console.log(`[CACHE MISS] ${key}. Querying MySQL...`);
+
+    if (!mysqlPool) {
+      console.error("mysqlPool is not defined or imported properly");
+      throw new Error("mysqlPool undefined");
+    }
+
+    const connection = await mysqlPool.getConnection();
+    console.log(`MySQL connected. Thread ID: ${connection.threadId}`);
+
     try {
-
-      if (!mysqlPool){
-         console.error( "mysqlPool is not defined or imported properly");
-      return;
-        }else{
-          // create new instance
-          
-        }
-
-      
-
-      const [mysqlResult] = await mysqlPool.query(mysqlQuery);
-
+      const [mysqlResult] = await connection.query(mysqlQuery);
+      connection.release();
 
       if (mysqlResult?.length) {
-      console.log(`${key} : Done Reading on mysql:` + mysqlResult );
-
-        await redisClient.set(key, JSON.stringify(mysqlResult), 'EX', TTL_SECONDS);
+        console.log(`[MySQL SUCCESS] ${key} : ${JSON.stringify(mysqlResult)}`);
+        await setData(key, JSON.stringify(mysqlResult), "EX", TTL_SECONDS);
         return mysqlResult;
+      } else {
+        console.log(`[MySQL EMPTY RESULT] ${key}`);
+        throw new Error("MySQL empty result");
       }
-      throw new Error('MySQL empty result');
     } catch (mysqlErr) {
-      console.warn(`[MySQL Error]: ${mysqlErr.message}, Falling back to PostgreSQL`);
-
-      const pgResult = await pgClient.query(pgQuery, { type: pgClient.QueryTypes.SELECT });
-      if (pgResult?.length) {
-        await redisClient.set(key, JSON.stringify(pgResult), "EX", TTL_SECONDS);
-        return pgResult;
-      }
-      throw new Error('Postgres also empty');
+      connection.release();
+      console.warn(`[MySQL ERROR] ${mysqlErr.message}`);
+      throw mysqlErr;
     }
-  } catch (err) {
-    console.error( `getCachedOrQuery error:`, err.message);
-    throw err;
+
+  } catch (mysqlOrCacheErr) {
+    // 3. Fallback to PostgreSQL
+    console.log(`[POSTGRES FALLBACK] ${key}`);
+    try {
+      const pgResult = await pgClient.query(pgQuery, {
+        type: pgClient.QueryTypes.SELECT,
+      });
+
+      if (pgResult?.length) {
+        console.log(`[PostgreSQL SUCCESS] ${key} : ${JSON.stringify(pgResult)}`);
+        await setData(key, JSON.stringify(pgResult), "EX", TTL_SECONDS);
+        return pgResult;
+      } else {
+        console.warn(`[PostgreSQL EMPTY RESULT] ${key}`);
+        throw new Error("Postgres also empty");
+      }
+    } catch (pgErr) {
+      console.error(`[PostgreSQL ERROR] ${pgErr.message}`);
+      throw pgErr;
+    }
   }
 };
 
+
 // Configure multer for memory storage
-const storage = multer.memoryStorage();
+const storage = memoryStorage();
 const upload = multer({
   storage: storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
@@ -93,7 +107,7 @@ const upload = multer({
 // Database table creation (run once)
 async function createTable() {
   try {
-    const pool = mysql.createConnection()
+    const pool = createConnection()
     const connection = await pool.getConnection();
     
     const createTableQuery = `
@@ -121,7 +135,7 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
     let pgResult;
     let mysqlResult;
 
-    const mysqlConnection = await mysqlPool.getConnection(); // `mysql2` style
+    const mysqlConnection = await getConnection(); // `mysql2` style
     console.log("Mysql connected:" +  mysqlConnection)
     // For Sequelize, use transaction object; for node-postgres, use client.connect()
     // Assuming pgClient is Sequelize instance:
@@ -153,10 +167,10 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
       console.log("🚀 Transaction COMMITTED for key [" + key + "]");
       
       try {
-      await redisClient.set(key, JSON.stringify(mysqlResult), 'EX', TTL_SECONDS);
+      await setData(key, JSON.stringify(mysqlResult), 'EX', TTL_SECONDS);
     } catch (error) {
       console.log("Failed to add Redis key: "+ key +" \n " + error)
-      await redisClient.set(key, JSON.stringify(pgResult), 'EX', TTL_SECONDS);
+      await setData(key, JSON.stringify(pgResult), 'EX', TTL_SECONDS);
       return "Successfully Added " + key +" on Postgres. Failed on mySql";
     }
 
@@ -197,11 +211,11 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery, replace
     try {
 
          // Begin transaction
-      await mysqlPool.beginTransaction();
+      await beginTransaction();
       console.log(`MySQL Transaction began for key: [${key}]`);
 
       // MySQL Update
-      [mysqlResult] = await mysqlPool.query(mysqlUpdateQuery, replacements);
+      [mysqlResult] = await query(mysqlUpdateQuery, replacements);
       mysqlSuccess = true;
       console.log(`✅ MySQL update successful for key: [${key}]`);
     // Optional: check affected rows
@@ -238,14 +252,14 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery, replace
     // Redis Cache Update
     if (result) {
       console.log(`🔁 Caching result to Redis for key: [${key}]`);
-      await redisClient.setEx(key, TTL_SECONDS, JSON.stringify(productId,
+      await setEx(key, TTL_SECONDS, JSON.stringify(productId,
       itemsRemaining,
       lastUpdated));
     } else {
       console.warn(`⚠️ No result to cache for key: [${key}]`);
     }
     // Commit transaction
-    await mysqlPool.commit();
+    await commit();
 
     return res.status(200).send({
       success: true,
@@ -274,7 +288,7 @@ const removeCachedAndQuery = async (key, mysqlDeleteQuery, pgDeleteQuery, replac
     console.log("Product Id to be deleted :" + replacements + "mysql query: " + mysqlDeleteQuery)
     // Try MySQL delete
     try {
-      await mysqlPool.query(mysqlDeleteQuery, replacements);
+      await query(mysqlDeleteQuery, replacements);
       mysqlSuccess = true;
       console.log(`✅ MySQL delete successful for key:[${replacements}] from [${key}]`);
     } catch (mysqlErr) {
@@ -293,7 +307,7 @@ const removeCachedAndQuery = async (key, mysqlDeleteQuery, pgDeleteQuery, replac
 
     // Remove from Redis
     try {
-      const redisResult = await redisClient.del(key);
+      const redisResult = await del(key);
       console.log(`🗑️ Redis key deleted: [${key}]`);
     } catch (redisErr) {
       console.warn(`⚠️ Failed to delete Redis key: [${key}]`, redisErr.message);
@@ -311,11 +325,13 @@ const removeCachedAndQuery = async (key, mysqlDeleteQuery, pgDeleteQuery, replac
   }
 };
 
-
-module.exports = {
+export default {
+  removeData,
+  setData,
+  getData,
+  keyExists,
   getCachedOrQuery,
   addCachedAndQuery,
   updateCachedOrQuery,
   removeCachedAndQuery,
-  
 };

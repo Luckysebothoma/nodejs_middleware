@@ -1,13 +1,15 @@
-const dbSequelize = require("../config/db")
-const QueryTypes = require("sequelize")
 
 const cacheKey = "cartList";
-const { getCachedOrQuery,
+import ControllerHandler from "../utils/ControllerHandler.js";
+import TimeUtils from '../utils/Time.js';
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+ 
+const {
+  getCachedOrQuery,
   addCachedAndQuery,
-updateCachedOrQuery, 
-removeCachedAndQuery,
-} = require  ("../utils/ControllerHandler")
-
+  updateCachedOrQuery,
+  removeCachedAndQuery
+} = ControllerHandler;
 const getCartList = async(req, res) =>{
 /*
     try {
@@ -98,8 +100,12 @@ const add2Cart = async(req, res) => {
         const replacements = [productId, productName,productFlavor,productPrice];
 
         // Execute the query
-        addCachedAndQuery("cartList",query, query, replacements)
-        
+        await addCachedAndQuery(cacheKey,query, query, replacements)
+        res.status(200).send({
+
+            success: true,
+            message: "sent"
+        })
         
         }
 
@@ -166,4 +172,4 @@ const deleteCart= async(req, res) =>{
 
 }
 
-module.exports = {add2Cart, getCartList, deleteCart}
+export default {add2Cart, getCartList, deleteCart}

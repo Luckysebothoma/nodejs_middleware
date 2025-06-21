@@ -1,11 +1,14 @@
-const dbSequelize = require("../config/db")
-const QueryTypes = require("sequelize")
-const { getCachedOrQuery,
-  addCachedAndQuery,
-updateCachedOrQuery, 
-removeCachedAndQuery,
-} = require  ("../utils/ControllerHandler")
+  import ControllerHandler from "../utils/ControllerHandler.js";
+import TimeUtils from '../utils/Time.js';
 
+ const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+const {
+  getCachedOrQuery,
+  addCachedAndQuery,
+  updateCachedOrQuery,
+  removeCachedAndQuery
+} = ControllerHandler;
 
 const cacheKey = 'priceTracing'; // Key to store the list in Redis
 let keyExist = false;
@@ -322,7 +325,7 @@ const updatePriceTracing = async(req, res) => {
                     lastUpdated, 
                     productId
                   },
-                  type: QueryTypes.UPDATE
+                  type: UPDATE
                 });
     
                 if(!data){
@@ -369,4 +372,4 @@ const updatePriceTracing = async(req, res) => {
 
 
 
-module.exports = {removePriceTracing, removeEstimateById, getPriceTracing ,addPriceTracing , deletePriceTracing , updatePriceTracing }
+export default {removePriceTracing, removeEstimateById, getPriceTracing ,addPriceTracing , deletePriceTracing , updatePriceTracing }

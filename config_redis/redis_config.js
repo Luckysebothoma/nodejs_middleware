@@ -1,122 +1,148 @@
-const { createClient } = require('redis');
+import { createClient } from 'redis';
 
-// Create a Redis client instance
+// Create Redis client instance
 const redisClient = createClient({
-    url: 'redis://redis-service:6379',
-    socket: {
-        connectTimeout: 10000 // Optional: Increase timeout in case of slow Redis startup
-    }
+  url: 'redis://redis-service:6379',
+  socket: {
+    connectTimeout: 10000, // Optional: wait longer on Redis startup
+  },
 });
 
-/*
-// Using async/await to handle connection
-(async () => {
-    try {
-        await redisClient.connect();
-        console.log('Redis: Connected to Redis');
-    } catch (err) {
-        console.error('Redis: Redis connection error:', err);
-    }
-})();
+// Connect to Redis
+redisClient.connect()
+  .then(() => console.log('✅ Redis: Connected successfully'))
+  .catch(err => {
+    console.error('❌ Redis: Connection failed:', err);
+    process.exit(1); // Exit on failure if Redis is critical
+  });
 
-*/
-// Set a key with a value
-const setDataWithNoExpiry = async (key, value, expiry = 3600) => {
-    try {
-        await redisClient.set(key, expiry,JSON.stringify(value)); // Store value as JSON
-        console.log(`Redis: Data set successfully for key: ${key}`);
-    } catch (err) {
-        console.error('Redis: Error setting data:', err);
-    }
-};
+// -------- Redis Utility Functions --------
 
-// Get data for a key
-const getData = async (key) => {
-    try {
-        
-        
-        const data = await redisClient.get(key); // Get the value (as string)
-        if(!data){
-            console.log("Cached found:" + key);
-        }else{
-            console.error("Redi Hit Missed: " + key)
-        }
-        return data ? JSON.parse(data) : null; // Parse if it's a JSON object
-
-    } catch (err) {
-        console.error('Redis: Error getting data:' + key, err);
-    }
-};
-
-// Update or set data with an expiration time (in seconds)
+// Set data with optional expiry (default: 3600s)
 const setData = async (key, value, expiry = 3600) => {
-    try {
-        await redisClient.set(key, expiry, JSON.stringify(value)); // Set with expiry
-        console.log(`Data updated and set to expire in ${expiry} seconds for key: ${key}`);
-    } catch (err) {
-        console.error('Redis: Error setting data with expiry:' + key, err);
-    }
+  try {
+    await redisClient.set(key, JSON.stringify(value), {
+      EX: expiry,
+    });
+    console.log(`✅ Redis: Set key "${key}" with expiry ${expiry}s`);
+  } catch (err) {
+    console.error(`❌ Redis: Error setting data for key "${key}":`, err);
+  }
 };
 
-// Remove a key from Redis
-const removeData = async (key) => {
-    try {
-        await redisClient.del(key);
-        console.log(`Key ${key} deleted from Redis.`);
-    } catch (err) {
-        console.error('Redis: Error deleting data:' + key, err);
+// Set data with no expiry (for static or persistent cache)
+const setDataWithNoExpiry = async (key, value) => {
+  try {
+    await redisClient.set(key, JSON.stringify(value));
+    console.log(`✅ Redis: Set key "${key}" with no expiry`);
+  } catch (err) {
+    console.error(`❌ Redis: Error setting key "${key}" with no expiry:`, err);
+  }
+};
+
+// Get data by key
+const getData = async (key) => {
+  try {
+    const data = await redisClient.get(key);
+    if (data) {
+      console.log(`✅ Redis: Cache hit for key "${key}"`);
+      return JSON.parse(data);
+    } else {
+      console.log(`🔍 Redis: Cache miss for key "${key}"`);
+      return null;
     }
+  } catch (err) {
+    console.error(`❌ Redis: Error getting key "${key}":`, err);
+    return null;
+  }
+};
+
+// Delete a key
+const removeData = async (key) => {
+  try {
+    await redisClient.del(key);
+    console.log(`🗑️ Redis: Deleted key "${key}"`);
+  } catch (err) {
+    console.error(`❌ Redis: Error deleting key "${key}":`, err);
+  }
 };
 
 // Check if a key exists
 const keyExists = async (key) => {
-    try {
-        const exists = await redisClient.exists(key);
-        return exists === 1; // 1 means the key exists, 0 means it doesn't
-    } catch (err) {
-        console.error('Redis: Error checking if key exists:' + key, err);
-    }
+  try {
+    const exists = await redisClient.exists(key);
+    return exists === 1;
+  } catch (err) {
+    console.error(`❌ Redis: Error checking existence for key "${key}":`, err);
+    return false;
+  }
 };
 
-// Set a field in a hash
+// Set field in a hash
 const setHashData = async (hashKey, field, value) => {
-    try {
-        await redisClient.hset(hashKey, field, JSON.stringify(value));
-        console.log(`Field ${field} set in hash ${hashKey}`);
-    } catch (err) {
-        console.error('Redis: Error setting hash data:' + hashKey, err);
-    }
+  try {
+    await redisClient.hSet(hashKey, field, JSON.stringify(value));
+    console.log(`✅ Redis: Hash field "${field}" set in "${hashKey}"`);
+  } catch (err) {
+    console.error(`❌ Redis: Error setting hash field "${field}":`, err);
+  }
 };
 
-// Get a field from a hash
+// Get field from a hash
 const getHashData = async (hashKey, field) => {
-    try {
-        const data = await redisClient.hget(hashKey, field);
-        return data ? JSON.parse(data) : null;
-    } catch (err) {
-        console.error('Redis: Error getting hash data:', err);
-    }
+  try {
+    const data = await redisClient.hGet(hashKey, field);
+    return data ? JSON.parse(data) : null;
+  } catch (err) {
+    console.error(`❌ Redis: Error getting hash field "${field}":`, err);
+    return null;
+  }
 };
 
-// Add member to a set
+// Add a member to a set
 const addToSet = async (setKey, member) => {
-    try {
-        await redisClient.sadd(setKey, member);
-        console.log(`Member ${member} added to set ${setKey}`);
-    } catch (err) {
-        console.error('Redis: Error adding to set:', err);
-    }
+  try {
+    await redisClient.sAdd(setKey, member);
+    console.log(`✅ Redis: Member "${member}" added to set "${setKey}"`);
+  } catch (err) {
+    console.error(`❌ Redis: Error adding member "${member}" to set:`, err);
+  }
 };
 
-// Remove member from a set
+// Remove a member from a set
 const removeFromSet = async (setKey, member) => {
-    try {
-        await redisClient.srem(setKey, member);
-        console.log(`Member ${member} removed from set ${setKey}`);
-    } catch (err) {
-        console.error('Redis: Error removing from set:', err);
-    }
+  try {
+    await redisClient.sRem(setKey, member);
+    console.log(`🧹 Redis: Member "${member}" removed from set "${setKey}"`);
+  } catch (err) {
+    console.error(`❌ Redis: Error removing member "${member}" from set:`, err);
+  }
 };
 
+// Export
+export {
+  redisClient,
+  setData,
+  setDataWithNoExpiry,
+  getData,
+  removeData,
+  keyExists,
+  setHashData,
+  getHashData,
+  addToSet,
+  removeFromSet
+};
 
-module.exports = { redisClient,removeData, setData, getData, keyExists };
+// Optionally group default
+export default {
+  redisClient,
+  setData,
+  setDataWithNoExpiry,
+  getData,
+  removeData,
+  keyExists,
+  setHashData,
+  getHashData,
+  addToSet,
+  removeFromSet
+};

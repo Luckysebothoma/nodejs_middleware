@@ -1,9 +1,14 @@
-const mysqlPool = require("../config/db")
-const {  getCachedOrQuery,
+ import ControllerHandler from "../utils/ControllerHandler.js";
+import TimeUtils from '../utils/Time.js';
+
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+const {
+  getCachedOrQuery,
   addCachedAndQuery,
   updateCachedOrQuery,
-  removeCachedAndQuery} = require("../utils/ControllerHandler");
-const { formattedDate } = require("../utils/Time");
+  removeCachedAndQuery
+} = ControllerHandler;
 
 /*
 const addNewCandy = async(req, res) =>{
@@ -351,4 +356,4 @@ return data;
 }
 
 
-module.exports = {addNewCandy, addNewCandy_with_image, deleteItem}
+export default {addNewCandy, addNewCandy_with_image, deleteItem}

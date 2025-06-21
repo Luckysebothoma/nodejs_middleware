@@ -1,29 +1,29 @@
-const mysql = require('mysql2/promise');
-const keys = require('../keys');
-const { key } = require('../external-redis-api/config');
-const getShortTime = require('../utils/Time')
-
-console.log({
-  host: keys.myHost,
-  user: keys.myUser,
-  password: keys.myPassword,
-  database: keys.myDatabase
-});
-
-
-const mysqlPool = mysql.createPool({
-  host: keys.myHost.trim(),
-  user: keys.myUser.trim(),
-  password: keys.myPassword.trim(),
-  database: keys.myDatabase.trim(),
+import { createPool } from 'mysql2/promise';
+import { myHost, myUser, myPassword, myDatabase } from '../keys.js';
+import TimeUtils from '../utils/Time.js';
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+ 
+const poolConfig = {
+  host: myHost.trim(),
+  user: myUser.trim(),
+  password: myPassword.trim(),
+  database: myDatabase.trim(),
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-});
-if(mysqlPool){
-  console.log("Successfully connected to mySQL Database")
-}else {
-    console.log(`Failed to connect to ${keys.myHost.trim()}`)
+};
+
+console.log('[DB CONFIG]', poolConfig);
+
+const mysqlPool = createPool(poolConfig);
+
+// Optional: check if connection is successful
+try {
+  const connection = await mysqlPool.getConnection();
+  console.log(`[${getShortTime()}] ✅ Successfully connected to MySQL Database`);
+  connection.release();
+} catch (error) {
+  console.error(`[${getShortTime()}] ❌ Failed to connect to ${myHost.trim()}`, error);
 }
 
-module.exports = mysqlPool;
+export default mysqlPool;

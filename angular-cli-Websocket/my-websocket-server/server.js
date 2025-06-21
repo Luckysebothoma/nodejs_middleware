@@ -1,5 +1,5 @@
-const WebSocket = require('ws');
-const server = new WebSocket.Server({ port: 3050, path: '/ng-cli-ws' });
+import { Server } from 'ws';
+const server = new Server({ port: 3050, path: '/ng-cli-ws' });
 
 server.on('connection', (ws) => {
   console.log('New client connected');

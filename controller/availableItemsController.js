@@ -1,16 +1,16 @@
-const mysqlPool = require("../config/db")
-const pgPool = require("../config/postgres")
-const redis = require("../config/redisClient")
-const QueryTypes = require("sequelize")
-const cacheKey = 'availableItems'; // Key to store the list in Redis
+ 
+ const cacheKey = 'availableItems'; // Key to store the list in Redis
 let keyExist = false;
-const {  getCachedOrQuery,
+import TimeUtils from '../utils/Time.js';
+import ControllerHandler from "../utils/ControllerHandler.js";
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+const {
+  getCachedOrQuery,
   addCachedAndQuery,
   updateCachedOrQuery,
-  removeCachedAndQuery} = require("../utils/ControllerHandler");
-const { formattedDate } = require("../utils/Time");
-
-const { key } = require("../external-redis-api/config")
+  removeCachedAndQuery
+} = ControllerHandler;
 
 const removeAvailableItemsById = async(req, res) =>{
 
@@ -182,7 +182,7 @@ const updateAvailableItems = async(req, res) => {
         const replacements = [itemsRemaining, lastUpdated, productId];
 
            // Call reusable function
-        const result = await updateCachedOrQuery(key, mysqlUpdateQuery, pgUpdateQuery, replacements);
+        const result = await updateCachedOrQuery(cacheKey, query, query, replacements);
         
         // respond with result
         return res.status(200).send({
@@ -254,4 +254,4 @@ const addAvailableItems = async(req, res) => {
 
 }
 
-module.exports = {removeAvailableItemsById, addAvailableItems, deleteAvailableItems, getAvailableItems, updateAvailableItems}
+export default {removeAvailableItemsById, addAvailableItems, deleteAvailableItems, getAvailableItems, updateAvailableItems};
