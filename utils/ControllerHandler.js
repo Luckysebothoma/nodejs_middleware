@@ -1,4 +1,4 @@
-import redisConfig from '../config_redis/redis_config.js';
+import redisConfig, { updateDataWithNoExpiry } from '../config_redis/redis_config.js';
 const { removeData, setData, getData, keyExists,  setDataWithNoExpiry} = redisConfig;
 import mysqlPool  from '../config/db.js';
 import { pgClient } from '../config/postgres.js';
@@ -185,8 +185,9 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) =
       console.log("🚀 Transaction COMMITTED for key [" + key + "]");
       
       try {
-      await getCachedOrQuery(key, mysqlInsertQuery, mysqlInsertQuery)
-
+      //await getCachedOrQuery(key, mysqlInsertQuery, mysqlInsertQuery)
+      const replacementsObj = Object.fromEntries(values);
+      await updateDataWithNoExpiry(key, replacementsObj);
     } catch (error) {
 //      console.log("Failed to add Redis key: "+ key +" \n " + error)
 //      await setData(key, JSON.stringify(pgResult), 'EX', TTL_SECONDS);
@@ -282,7 +283,10 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery, replace
     // Commit transaction
     await connection.commit();
 
-    return  "✅ Available item updated successfully"
+      const replacementsObj = Object.fromEntries(values);
+      await updateDataWithNoExpiry(key, replacementsObj);
+
+    return  `✅ ${key} updated successfully`
 
   } catch (error) {
     await connection.rollback(); // Rollback transaction on error

@@ -46,6 +46,50 @@ const setDataWithNoExpiry = async (key, value) => {
   }
 };
 
+const updateDataWithNoExpiry = async (key, newValue) => {
+  try {
+    // Step 1: Read old data
+    const cached = await redisClient.get(key);
+    let updatedData = [];
+
+    if (cached) {
+      try {
+        updatedData = JSON.parse(cached);
+
+        if (!Array.isArray(updatedData)) {
+          console.warn(`⚠️ Redis: Key "${key}" did not contain an array, reinitializing.`);
+          updatedData = [];
+        } else {
+          console.log(`📥 Redis: Existing data fetched for key "${key}":`, updatedData);
+        }
+      } catch (parseErr) {
+        console.error(`❌ Redis: Failed to parse data for key "${key}":`, parseErr);
+        return false;
+      }
+    } else {
+      console.log(`ℹ️ Redis: No existing data found for key "${key}", starting fresh.`);
+    }
+
+    // Step 2: Delete old key
+    const deleteResult = await redisClient.del(key);
+    console.log(`🧹 Redis: Key "${key}" deleted:`, deleteResult === 1 ? "✅" : "❌ or not found");
+
+    // Step 3: Append new value
+    updatedData.push(newValue);
+    console.log(`📦 Redis: New data after append:`, updatedData);
+
+    // Step 4: Set key again with no expiry
+    await redisClient.set(key, JSON.stringify(updatedData));
+    console.log(`✅ Redis: Key "${key}" updated with new data.`);
+
+    return true;
+  } catch (err) {
+    console.error(`❌ Redis: Error during update process for key "${key}":`, err);
+    return false;
+  }
+};
+
+
 // Get data by key
 const getData = async (key) => {
   try {
@@ -131,6 +175,7 @@ export {
   redisClient,
   setData,
   setDataWithNoExpiry,
+  updateDataWithNoExpiry,
   getData,
   removeData,
   keyExists,
@@ -145,6 +190,7 @@ export default {
   redisClient,
   setData,
   setDataWithNoExpiry,
+  updateDataWithNoExpiry,
   getData,
   removeData,
   keyExists,
