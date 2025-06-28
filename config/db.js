@@ -1,8 +1,16 @@
-import { createPool } from 'mysql2/promise';
 import { myHost, myUser, myPassword, myDatabase } from '../keys.js';
 import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
- 
+import mysql from 'mysql2/promise';
+
+
+
+// These should be defined in your environment or securely passed
+//const myHost = process.env.MYSQL_HOST || 'localhost';/
+//const myUser = process.env.MYSQL_USER || 'root';
+//const myPassword = process.env.MYSQL_PASSWORD || '';
+//const myDatabase = process.env.MYSQL_DATABASE || 'myapp';
+
 const poolConfig = {
   host: myHost.trim(),
   user: myUser.trim(),
@@ -11,19 +19,18 @@ const poolConfig = {
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  timezone: '+02:00', // SAST — South Africa Standard Time
+  supportBigNumbers: true,
+  bigNumberStrings: true
 };
 
-console.log('[DB CONFIG]', poolConfig);
+const mysqlPool = mysql.createPool(poolConfig);
 
-const mysqlPool = createPool(poolConfig);
-
-// Optional: check if connection is successful
-try {
+// Optional: Centralized getConnection for logging/debugging
+const getConnection = async () => {
   const connection = await mysqlPool.getConnection();
-  console.log(`[${getShortTime()}] ✅ Successfully connected to MySQL Database`);
-  connection.release();
-} catch (error) {
-  console.error(`[${getShortTime()}] ❌ Failed to connect to ${myHost.trim()}`, error);
-}
+  console.log(`[${getShortTime()}] 🔌 MySQL connection acquired from pool`);
+  return connection;
+};
 
-export default mysqlPool;
+export { mysqlPool, getConnection };

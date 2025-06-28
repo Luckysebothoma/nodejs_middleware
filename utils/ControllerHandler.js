@@ -1,10 +1,15 @@
 import redisConfig, { updateDataWithNoExpiry } from '../config_redis/redis_config.js';
 const { removeData, setData, getData, keyExists,  setDataWithNoExpiry} = redisConfig;
-import mysqlPool  from '../config/db.js';
+// import mysqlPool  from '../config/db.js';
 import { pgClient } from '../config/postgres.js';
 import { createConnection } from "mysql2/promise"; 
 const TTL_SECONDS = 30000 * 10; // 5 minutes x 10
 import multer, { memoryStorage } from 'multer';
+import { getConnection } from '../config/db.js';
+
+import TimeUtils from './Time.js';
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
 /*
 const mysqlPool = mysql.createPool({ 
   host: keys.myHost.trim(),
@@ -26,46 +31,46 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
 
     if (cachedExists) {
 
-      console.log(`[CACHE HIT] ${key}`);
+      console.log(`${getLongTime()}[CACHE HIT] ${key}`);
       const cachedData = await getData(key);
 
       if (cachedData) {
-        console.log(`[CACHE DATA] ${key} : ${cachedData.length}`);
+        console.log(`${getLongTime()}[CACHE DATA] ${key} : ${cachedData.length}`);
         return cachedData;
 
       } else {
-        console.log(`[CACHE HIT EMPTY] ${key}`);
+        console.log(`${getLongTime()}[CACHE HIT EMPTY] ${key}`);
         return null;
       }
     }
 
     // 2. Cache miss – Query MySQL first
-    console.log(`[CACHE MISS] ${key}. Querying MySQL...`);
-
-    if (!mysqlPool) {
-      console.error("mysqlPool is not defined or imported properly");
+    console.log(`${getLongTime()}[CACHE MISS] ${key}. Querying MySQL...`);
+   const connection = await getConnection();
+    if (!connection) {
+      console.error(getLongTime() + " mysqlPool is not defined or imported properly");
       throw new Error("mysqlPool undefined");
     }
 
-    const connection = await mysqlPool.getConnection();
-    await connection.beginTransaction();
-    console.log(`MySQL connected. Thread ID: ${connection.threadId}`);
+ 
+//    await connection.beginTransaction();
+    console.log(`${getLongTime()}MySQL connected. Thread ID: ${connection.threadId}`);
 
     try {
-      console.log(`Key[ ${key}] Executing mysql query:`, mysqlQuery)
+      console.log(`${getLongTime()} Key[ ${key}] Executing mysql query:`, mysqlQuery)
       const [mysqlResult] = await connection.query(mysqlQuery);
 
       if (mysqlResult?.length) {
-        console.log(`[MySQL SUCCESS] ${key} : ${mysqlResult.length}`);
+        console.log(`${getLongTime()}[MySQL SUCCESS] ${key} : ${mysqlResult.length}`);
         //await setData(key, JSON.stringify(mysqlResult), "EX", TTL_SECONDS);
-        await setDataWithNoExpiry(key, JSON.stringify(mysqlResult))
+        //await setDataWithNoExpiry(key)
 
         connection.release();
         return mysqlResult;
 
 
       } else {
-        console.log(`[MySQL EMPTY RESULT] ${key}`);
+        console.log(`${getLongTime()}[MySQL EMPTY RESULT] ${key}`);
         throw new Error("MySQL empty result");
       }
     } catch (mysqlErr) {
@@ -77,33 +82,18 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
         try{
 
           connection.release();
-          console.log("Mysql Connection Realeased");
+          console.log(getLongTime() + " Mysql Connection Realeased");
         }catch(err){
-          console.error("Error releasing mySQL connection:", err)
+          console.error(getLongTime() + " Error releasing mySQL connection:", err)
         }
       }
     }
 
-  } catch (mysqlOrCacheErr) {
-    // 3. Fallback to PostgreSQL
-    console.log(`[POSTGRES FALLBACK] ${key}`);
-    try {
-      const pgResult = await pgClient.query(pgQuery, {
-        type: pgClient.QueryTypes.SELECT,
-      });
+  } catch (mysqlOrCacheErr) {     
 
-      if (pgResult?.length) {
-        console.log(`[PostgreSQL SUCCESS] ${key} : ${JSON.stringify(pgResult)}`);
-        await setData(key, JSON.stringify(pgResult), "EX", TTL_SECONDS);
-        return pgResult;
-      } else {
-        console.warn(`[PostgreSQL EMPTY RESULT] ${key}`);
-        throw new Error("Postgres also empty");
-      }
-    } catch (pgErr) {
-      console.error(`[PostgreSQL ERROR] ${pgErr.message}`);
-      throw pgErr;
-    }
+
+
+
   }
 };
 
@@ -149,203 +139,476 @@ async function createTable() {
 }
 
 /** Add to DB, cache result */
-const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery, values) => {
-    const mysqlConnection = await mysqlPool.getConnection(); // `mysql2` style
+const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery = null, values = [],mySqlConnection) => {
 
-    if (mysqlPool) {
-  } else {
-    throw new Error("mysqlPool is not defined or imported properly");
+  if (!mySqlConnection) {
+    throw new Error("❌ mysqlPool is not defined or improperly initialized");
   }
+
+  if (!key || typeof key !== 'string') {
+    throw new Error("❌ Invalid Redis key provided");
+  }
+
+  if (!mysqlInsertQuery || typeof mysqlInsertQuery !== 'string') {
+    throw new Error("❌ Invalid MySQL insert query provided");
+  }
+
+  if (!Array.isArray(values)) {
+    throw new Error("❌ Values must be an array");
+  }
+
+//  const mysqlConnection = await getConnection();
+  let mysqlResult = null;
+  let pgResult = null;
+
+  if(!mySqlConnection){
+    
+  throw new Error("❌ mysqlConnection not connected...!");
+
+  }
+
   try {
-    let pgResult;
-    let mysqlResult;
+    console.log(`${getLongTime()}📦 Inserting new key: [${key}] \n mysqlInsertQuery ${mysqlInsertQuery} \n values: ${values} isArray: ${Array.isArray(values)}`);
+    console.log(getLongTime() + " 🔌 mysqlConnection:", mySqlConnection?.constructor?.name);
+    if (!mySqlConnection || typeof mySqlConnection.query !== 'function') {
+      throw new Error("❌ mysqlConnection is not valid or not initialized properly");
+    }
 
-    console.log("Mysql connected:" +  mysqlConnection);
-//console.log("PG connected:" +  pgTransaction)
-
-    // Begin transactions on both databases
-    await mysqlConnection.beginTransaction();
-    // No need to run 'BEGIN' manually; Sequelize transaction handles it
+    // Start MySQL transaction
+   // await mysqlConnection.beginTransaction();
 
     try {
-      console.log("Now Adding New Key: " + key)
-      // Execute both inserts
-      const mysqlResult = await mysqlConnection.query(mysqlInsertQuery, values);
-      console.log("✅ mySql insert success [" + key + "]");
-      // await pgClient.query(pgInsertQuery, { transaction: pgTransaction, replacements: values });
-      // console.log("✅ PostgreSQL insert success [" + key + "]");
+      // MySQL insert
+//      [mysqlResult] = await mysqlConnection.query(mysqlInsertQuery, values);
+      const results = await insertWithIncrementRetry(mysqlInsertQuery,values, mySqlConnection)
 
-      // Commit both transactions
-      await mysqlConnection.commit();
-      //console.log("✅ mySql COMMITTED success [" + key + "]");
 
-     // await pgTransaction.commit();
-     //       console.log("✅ PG COMMITTED success [" + key + "]");
+      if(!results){
+       throw `❌ MySQL insert Failed for key: [${key}]` 
+      }
+        console.log(`${getLongTime()}✅ MySQL insert successful for key: [${key}]`);
 
-      console.log("🚀 Transaction COMMITTED for key [" + key + "]");
-      
+      // Commit MySQL
+      //await mysqlConnection.commit();
+      //console.log(`🔒 MySQL transaction committed for key: [${key}]`);
+
+      // Redis caching
       try {
-      //await getCachedOrQuery(key, mysqlInsertQuery, mysqlInsertQuery)
-      const replacementsObj = Object.fromEntries(values);
-      await updateDataWithNoExpiry(key, replacementsObj);
-    } catch (error) {
-//      console.log("Failed to add Redis key: "+ key +" \n " + error)
-//      await setData(key, JSON.stringify(pgResult), 'EX', TTL_SECONDS);
-      return "Successfully Added " + key +" on Postgres. Failed on mySql";
-    }
+        const replacementsObj = Object.fromEntries(
+          values.map((v, i) => [`param${i}`, v])
+        );
+        console.log(`${getLongTime()}Done prep data to insert to db, Key[${JSON.stringify(key)}] value[${values}]`);
+        const redisCachStatus = await updateDataWithNoExpiry(key, replacementsObj);
+        if(!redisCachStatus){
 
-    return "Successfully Added " + key;
+          console.log(getLongTime() + " ❌ AddCacheAndQuery: SOmething wrong happening while updating Data With No Expiry")
+        }
 
 
-    }catch(err){
-        //      pgResult = await pgClient.query(pgInsertQuery, { type: pgClient.QueryTypes.INSERT });
-//      console.log("Succefuly added to postgres key [" + key +"]")
-      // Rollback both on error
-      await mysqlConnection.rollback();
-    //  await pgTransaction.rollback();
-      console.error( "❌ Transaction FAILED and ROLLED BACK for key [" + key + "]:", err);
+        console.log(`${getLongTime()}🧠 Redis cache updated for key: [${key}]`
 
-    }
-    } finally {
-      // Release DB connections
-      mysqlConnection.release();
-      console.log("✅ mySql saved and released success [" + key + "]");
+        );
+      } catch (cacheErr) {
+        console.warn(`⚠️ Redis cache update failed for key: [${key}]:`, cacheErr);
+        return `✅ Inserted [${key}] but failed to update Redis`;
+      }
 
-      // No need to release pgTransaction, Sequelize handles it
-    }
+      return `✅ Successfully added [${key}]`;
+
+    } catch (insertErr) { 
+
+      //await mysqlConnection.rollback();
+      console.Error(`${getLongTime()} ❌ Key[${JSON.stringify(key)}] value[${values}] \n 
+      DB insert failed and transaction rolled back for key: [${key}]:`, insertErr);
+
+      // Optional fallback: Try PostgreSQL even if MySQL fails
+/*      try {
+        if (pgInsertQuery && pgClient) {
+          pgResult = await pgClient.query(pgInsertQuery, values);
+          console.log(`${getLongTime()}✅ Fallback PostgreSQL insert succeeded for key: [${key}]`);
+
+          // Optional Redis update on fallback
+          const fallbackObj = Object.fromEntries(
+            values.map((v, i) => [`param${i}`, v])
+          );
+          await updateDataWithNoExpiry(key, fallbackObj);
+
+          return `⚠️ MySQL failed but PostgreSQL insert succeeded for key: [${key}]`;
+        }
+      } catch (pgErr) {
+        console.Error(`${getLongTime()} ❌ PostgreSQL fallback also failed for key: [${key}]`, pgErr);
+      }*/
+
       
+      console.log(`${getLongTime()}❌ Failed to insert [${key}] into both DBs`);
+
+      throw insertErr;
     }
-    
+
+  } catch (mainErr) {
+    console.Error(`${getLongTime()} 🔥 Critical error during addCachedAndQuery for key: [${key}]`, mainErr);
+    throw mainErr;
+
+  } 
+};
 
 /** Update in DB, refresh cache */
-const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery, replacements = []) => {
-      const connection = await mysqlPool.getConnection()
+const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery = null, replacements = []) => {
+  if (!key || typeof key !== 'string') {
+    console.error(getLongTime() + " ❌ Invalid Redis key");
+    return null;
+  }
+
+  if (!mysqlUpdateQuery || typeof mysqlUpdateQuery !== 'string') {
+    console.error(getLongTime() + " ❌ Invalid MySQL query");
+    return null;
+  }
+
+  if (!Array.isArray(replacements)) {
+    console.error(getLongTime() + " ❌ Replacements must be an array");
+    return null;
+  }
+
+  const connection = await getConnection();
+
+  let mysqlResult = null;
+  let pgResult = null;
+  let result = null;
+  let mysqlSuccess = false;
+  let pgSuccess = true; // Default to true if pgUpdateQuery not provided
+
+  console.log(`${getLongTime()}🛠️ Starting DB update and cache for key: [${key}]`);
 
   try {
-    let mysqlResult = null;
-    let pgResult = null;
-    let result = null;
+    await connection.beginTransaction();
+    console.log(`${getLongTime()}🔄 MySQL Transaction started for key: [${key}]`);
 
-    let mysqlSuccess = false;
-    let pgSuccess = true;
-
-    console.log(`Updating MySQL and PostgreSQL for key: [${key}]`);
-    // Database Updates
+    // MySQL Update
     try {
-
-         // Begin transaction
-      await connection.beginTransaction();
-      console.log(`MySQL Transaction began for key: [${key}]`);
-
-      // MySQL Update
       [mysqlResult] = await connection.query(mysqlUpdateQuery, replacements);
       mysqlSuccess = true;
-      console.log(`✅ MySQL update successful for key: [${key}]`);
-    // Optional: check affected rows
-    if (mysqlResult.affectedRows === 0) {
-       console.log(`No record found to update for productId: ${productId}`);
-    }
-      // PostgreSQL Update
-//      pgResult = await pgClient.query(pgUpdateQuery, replacements);  // assume replacements is an array
-//      pgSuccess = true;
-//      console.log(`✅ PostgreSQL update successful for key: [${key}]`);
 
-    } catch (dbErr) {
-      console.error(`❌ DB update error for key: [${key}]`, dbErr);
-
-      if (!mysqlSuccess && !pgSuccess) {
-        return `❌ Both MySQL and PostgreSQL update failed for key: [${key}]\n${dbErr}`;
+      if (mysqlResult.affectedRows === 0) {
+        console.warn(`⚠️ No record updated in MySQL for key: [${key}]`);
+      } else {
+        console.log(`${getLongTime()}✅ MySQL update succeeded for key: [${key}]`);
       }
-      if (!mysqlSuccess) {
-        console.warn(`⚠️ MySQL update failed for key: [${key}], falling back to PG result.`);
-        result = pgResult;
-      } else if (!pgSuccess) {
-        console.warn(`⚠️ PostgreSQL update failed for key: [${key}], falling back to MySQL result.`);
-        result = mysqlResult;
+    } catch (mysqlErr) {
+      console.Error(`${getLongTime()} ❌ MySQL update failed for key: [${key}]`, mysqlErr);
+    }
+
+    // PostgreSQL Update (if provided)
+    if (pgUpdateQuery) {
+      try {
+        pgResult = await pgClient.query(pgUpdateQuery, replacements);
+        pgSuccess = true;
+        console.log(`${getLongTime()}✅ PostgreSQL update succeeded for key: [${key}]`);
+      } catch (pgErr) {
+        pgSuccess = false;
+        console.Error(`${getLongTime()} ❌ PostgreSQL update failed for key: [${key}]`, pgErr);
       }
     }
 
-    // If both DB operations succeeded, prefer MySQL result
+    // Determine fallback result
     if (mysqlSuccess && pgSuccess) {
       result = mysqlResult;
-    }else{
-      console.warn(`⚠️ Only one DB operation succeeded for key: [${key}]. Using fallback result.`);
+    } else if (mysqlSuccess) {
+      console.warn(`⚠️ Using MySQL result only for key: [${key}]`);
+      result = mysqlResult;
+    } else if (pgSuccess) {
+      console.warn(`⚠️ Using PostgreSQL result only for key: [${key}]`);
+      result = pgResult;
+    } else {
+      throw new Error("Both MySQL and PostgreSQL updates failed");
     }
 
     // Redis Cache Update
     if (result) {
-      console.log(`🔁 Caching result to Redis for key: [${key}]`);
-      getCachedOrQuery(key, mysqlUpdateQuery, mysqlUpdateQuery);
+      console.log(`${getLongTime()}🧠 Updating Redis cache for key: [${key}]`);
 
+      // You can adjust the logic here to build a consistent object from the result or `replacements`
+      const cacheValue = Array.isArray(replacements)
+        ? Object.fromEntries(replacements.map((val, idx) => [`param${idx}`, val]))
+        : {};
+
+      await updateDataWithNoExpiry(key, cacheValue); // Assumes this function handles JSON.stringify etc.
     } else {
-      console.warn(`⚠️ No result to cache for key: [${key}]`);
+      console.warn(`⚠️ No valid result for Redis cache on key: [${key}]`);
     }
-    // Commit transaction
+
     await connection.commit();
+    console.log(`${getLongTime()}✅ Transaction committed successfully for key: [${key}]`);
+    return `✅ [${key}] updated successfully`;
 
-      const replacementsObj = Object.fromEntries(values);
-      await updateDataWithNoExpiry(key, replacementsObj);
+  } catch (err) {
+    await connection.rollback();
+    console.Error(`${getLongTime()} 🔥 Transaction rollback for key: [${key}] due to error:`, err.message);
+    return `❌ Update failed for key: [${key}]`;
 
-    return  `✅ ${key} updated successfully`
-
-  } catch (error) {
-    await connection.rollback(); // Rollback transaction on error
-    console.error("🔥 updateAvailableItems error:", error.message);
-    return null
-
-  }finally{
+  } finally {
     connection.release();
+    console.log(`${getLongTime()}🔚 Connection released for key: [${key}]`);
   }
 };
 
 
+
 /** Remove from DB, delete from Redis */
-const removeCachedAndQuery = async (key, mysqlDeleteQuery, pgDeleteQuery, replacements = []) => {
+ const removeCachedAndQuery = async (key, mysqlDeleteQuery, pgDeleteQuery = null, replacements = []) => {
   
-  const connection = await mysqlPool.getConnection();
+  const connect = await getConnection();
+
+  if (!connect || typeof getConnection !== 'function') {
+    throw new Error("❌ mysqlPool is not defined or initialized properly");
+  }
+
+  if (!key || typeof key !== 'string') {
+    throw new Error("❌ Invalid Redis key");
+  }
+
+  if (!mysqlDeleteQuery || typeof mysqlDeleteQuery !== 'string') {
+    throw new Error("❌ Invalid MySQL delete query");
+  }
+
+  if (!Array.isArray(replacements)) {
+    throw new Error("❌ Replacements must be an array");
+  }
+
+  const connection = await getConnection();
+  
+
+  let mysqlSuccess = false;
+  let pgSuccess = true;
+
   try {
-    let mysqlSuccess = false;
-    let pgSuccess = true;
-    console.log("Product Id to be deleted :" + replacements + "mysql query: " + mysqlDeleteQuery)
+    console.log(`${getLongTime()}🗑️ Deleting for key: [${key}], replacements: ${JSON.stringify(replacements)}`);
+
     // Try MySQL delete
+    const query = `DELETE FROM ${key}  WHERE productId =${replacements}`
     try {
-      await connection.query(mysqlDeleteQuery, replacements);
-      mysqlSuccess = true;
-      console.log(`✅ MySQL delete successful for key:[${replacements}] from [${key}]`);
+     // const [mysqlResult] = await connection.query(mysqlDeleteQuery, replacements);
+      const [mysqlResult] = await connection.query(query);
+     
+     mysqlSuccess = true;
+      console.log(`${getLongTime()}✅ MySQL delete successful for key: [${key}]`);
     } catch (mysqlErr) {
-      console.warn(`⚠️ MySQL delete failed for key: [${key}], Failed: `, mysqlErr.message);
-/*
-      // Fallback to PostgreSQL delete
-      try {
-        await pgClient.query(pgDeleteQuery, replacements);
-        pgSuccess = true;
-        console.log(`✅ PostgreSQL delete successful for key: [${key}]`);
-      } catch (pgErr) {
-        console.error(`❌ Both MySQL and PostgreSQL delete failed for key: [${key}]`, pgErr.message);
-        throw pgErr; // rethrow to outer catch
-      } */
+      console.warn(`⚠️ MySQL delete failed for key: [${key}] -> ${mysqlErr.message}`);
+
+      // Optional PostgreSQL fallback
+      if (pgDeleteQuery && pgClient) {
+        try {
+          await pgClient.query(pgDeleteQuery, replacements);
+          pgSuccess = true;
+          console.log(`${getLongTime()}✅ PostgreSQL fallback delete successful for key: [${key}]`);
+        } catch (pgErr) {
+          pgSuccess = false;
+          console.Error(`${getLongTime()} ❌ PostgreSQL delete failed for key: [${key}] -> ${pgErr.message}`);
+          throw new Error(`${getLongTime()} ❌ Delete failed in both MySQL and PostgreSQL`);
+        }
+      } else {
+        pgSuccess = false;
+        console.warn(`ℹ️ No PostgreSQL fallback attempted for key: [${key}]`);
+      }
     }
 
     // Remove from Redis
     try {
-      const redisResult = await del(key);
-      console.log(`🗑️ Redis key deleted: [${key}]`);
+      const redisDelResult = await removeData(key); // Should return number of keys deleted
+      if (redisDelResult > 0) {
+        console.log(`${getLongTime()}🧹 Redis key deleted: [${key}]`);
+      } else {
+        console.warn(`⚠️ Redis key [${key}] not found or already deleted`);
+      }
     } catch (redisErr) {
-      console.warn(`⚠️ Failed to delete Redis key: [${key}]`, redisErr.message);
+      console.warn(`⚠️ Failed to delete Redis key: [${key}] -> ${redisErr.message}`);
     }
 
     return {
-      success: true,
+      success: mysqlSuccess || pgSuccess,
       mysqlDeleted: mysqlSuccess,
       pgDeleted: pgSuccess,
     };
 
   } catch (err) {
-    console.error(`🔥 removeCachedAndQuery error:`, err.message);
+    console.Error(`${getLongTime()} 🔥 removeCachedAndQuery critical error: ${err.message}`);
     throw err;
+  } finally {
+    connection.release();
+    console.log(`${getLongTime()}🔚 MySQL connection released for key: [${key}]`);
   }
 };
 
+
+const insertWithIncrementRetry = async (
+  mysqlInsertQuery,
+  replacements = [],
+  mySqlConnection,
+  conflictIndex = 0,           // Index of the primary key (e.g., priceTraceId)
+  imageUrlIndex = null,        // Index of the image_url in the replacements array (optional)
+  maxRetries = 5,
+) => {
+
+//  const connection = await getConnection();
+
+  let retries = 0;
+  console.log(getLongTime() + " 🛠️ mysqlInsertQuery Type:", typeof mysqlInsertQuery);
+  console.log(getLongTime() + " 🛠️ Query:", mysqlInsertQuery);
+  console.log(getLongTime() + " 🛠️ values:", replacements, "Array?", Array.isArray(replacements));
+  console.log(getLongTime() + " 🔌 Connection Type:", mySqlConnection?.constructor?.name);
+
+  if (!mysqlInsertQuery || typeof mysqlInsertQuery !== 'string') {
+    throw new Error(`${getLongTime()} ❌ mysqlInsertQuery is invalid for key: ${key}`);
+  }
+  if (!Array.isArray(replacements)) {
+    throw new Error(`${getLongTime()} ❌ values is not an array for key: ${key}`);
+  }
+  if (!mySqlConnection) {
+    throw new Error(`${getLongTime()} ❌ mysqlConnection is invalid for key: ${key}`);
+  }
+
+
+  while (retries < maxRetries) {
+    try {
+
+      const [result] = await mySqlConnection.query(mysqlInsertQuery, replacements);
+
+      // connection.release();
+      console.log(`${getLongTime()}✅ Insert successful after ${retries} retries.`);
+      return result;
+
+    } catch (err) {
+//      connection.release();
+
+      if (err.code === 'ER_DUP_ENTRY' && err.sqlMessage.includes('Duplicate entry')) {
+        // Increment primary key
+        const currentId = parseInt(replacements[conflictIndex], 10);
+        const newId = currentId + 1;
+        replacements[conflictIndex] = newId;
+        console.warn(`⚠️ Duplicate key ${currentId}. Retrying with ${newId}...`);
+
+        // Increment image filename if applicable
+        if (imageUrlIndex !== null && typeof replacements[imageUrlIndex] === 'string') {
+          replacements[imageUrlIndex] = incrementImageUrl(replacements[imageUrlIndex]);
+          console.warn(`🖼️ Image URL updated to: ${replacements[imageUrlIndex]}`);
+        }
+
+        retries += 1;
+      } else {
+        console.Error(`${getLongTime()} ❌ Insert failed: ${err.message}`);
+        throw err;
+      }
+
+    console.log(`${getLongTime()}Inserting data after ${retries} due to Dup Keys`);
+    //console.log(`📦 Inserting new key: [${key}]`);
+
+ // const mysqlConnection = await getConnection();
+
+    // Start MySQL transaction
+//    await mysqlConnection.beginTransaction();
+
+    try {
+      // MySQL insert
+      [mysqlResult] = await mySqlConnection.query(mysqlInsertQuery, replacements);
+ //     const [data] = await mySqlConnection.query(`SELECT * FROM ` + key)
+ 
+ //     updateDataWithNoExpiry(key, data);
+      console.log(`${getLongTime()}${getLongTime()}✅ MySQL insert successful for Query: [${mysqlInsertQuery}]`);
+
+/*      // PostgreSQL insert (optional)
+      if (pgInsertQuery && pgClient) {
+        pgResult = await pgClient.query(pgInsertQuery, values);
+        console.log(`${getLongTime()}✅ PostgreSQL insert successful for key: [${key}]`);
+      }
+*/
+      // Commit MySQL
+  //    await mysqlConnection.commit();
+      console.log(`${getLongTime()}🔒 MySQL transaction committed for key: [${key}]`);
+
+      
+ //     await updateDataWithNoExpiry(key, replacementsObj);
+
+      console.log(`${getLongTime()}✅ Successfully added [${key}]`);
+
+      return true;
+
+    } catch (err) {
+
+//      await mysqlConnection.rollback();
+    console.Error(`${getLongTime()} ❌ DB insert failed and transaction rolled back for key: [${key}]:`);
+    console.error(getLongTime() + " ❗ Error name:", err.name);
+    console.error(getLongTime() + " ❗ Error message:", err.message);
+    console.error(getLongTime() + " ❗ Error stack:", err.stack);
+    throw err;
+    }
+
+    }
+  }
+
+  throw new Error(`${getLongTime()} ❌ Max retries (${maxRetries}) reached. Insert failed.`);
+};
+
+
+function incrementImageUrl(imageUrl) {
+  // Example: "Product_20.jpg" -> "Product_21.jpg"
+  const regex = /(\D*)(\d+)(\.\w+)$/; // Matches base text, number, and extension
+  const match = imageUrl.match(regex);
+
+  if (!match) return imageUrl;
+
+  const base = match[1];       // "Product_"
+  const number = parseInt(match[2], 10);  // 20
+  const ext = match[3];        // ".jpg"
+
+  return `${base}${number + 1}${ext}`;
+}
+
+
+/*
+const insertWithIncrementRetry = async (
+  mysqlInsertQuery,
+  replacements = [],
+  conflictIndex = 0, // Index in `replacements` array for the primary key
+  maxRetries = 50
+) => {
+  let retries = 0;
+
+  while (retries < maxRetries) {
+    try {
+      const connection = await getConnection();
+      try {
+        const [result] = await connection.query(mysqlInsertQuery, replacements);
+        connection.release();
+        console.log(`${getLongTime()}✅ Insert successful after ${retries} retries.`);
+        return result;
+      } catch (err) {
+        connection.release();
+
+        // Check for duplicate key
+        if (
+          err.code === 'ER_DUP_ENTRY' &&
+          err.sqlMessage.includes('Duplicate entry')
+        ) {
+          const currentValue = parseInt(replacements[conflictIndex], 10);
+          const newValue = currentValue + 1;
+          console.warn(`⚠️ Duplicate key ${currentValue}. Retrying with ${newValue}...`);
+
+          replacements[conflictIndex] = newValue;
+          retries += 1;
+        } else {
+          // Unknown error
+          console.Error(`${getLongTime()} ❌ Insert failed: ${err.message}`);
+          throw err;
+        }
+      }
+    } catch (outerErr) {
+      console.Error(`${getLongTime()} 🔥 MySQL connection error: ${outerErr.message}`);
+      throw outerErr;
+    }
+  }
+
+  throw new Error(`${getLongTime()} ❌ Max retries (${maxRetries}) reached. Insert failed.`);
+};
+*/
 export default {
   removeData,
   setData,

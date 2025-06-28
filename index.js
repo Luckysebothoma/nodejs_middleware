@@ -5,6 +5,7 @@ import cors from "cors";
 import multer, { diskStorage } from "multer";
 import { config } from "dotenv";
 import { readFileSync, existsSync, mkdirSync } from "fs";
+import  fs  from 'fs'
 import { join, extname } from "path";
 import { createServer } from "https";
 import { createServer as createHttpServer } from "http";
@@ -14,6 +15,10 @@ import { v4 as uuidv4 } from "uuid";
 import { auth } from "express-oauth2-jwt-bearer";
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+import setDataWithExpiry from './config_redis/redis_config.js'
+
+
 
 // 👇 Needed for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -158,7 +163,7 @@ const storage = diskStorage({
   destination: uploadDir,
   filename: (req, file, cb) => cb(null, `${file.fieldname}-${Date.now()}${extname(file.originalname)}`)
 });
-const upload = multer({ storage });
+const upload = multer({ dest: 'uploads/' }); // Will store file temporarily
 
 app.post("/images/temp", upload.single("file"), async (req, res) => {
     console.log(`${getShortTime(new Date())} ${req.path} endpoint hit`)
@@ -183,7 +188,7 @@ import redisConfig from './config_redis/redis_config.js';
 const { removeData, setData, getData, keyExists,  setDataWithNoExpiry} = redisConfig;
 
 // POST /sortedAsRedisKey
-app.post('/sortedAsRedisKey', upload.single('file'), async (req, res) => {
+/*app.post('/sortedAsRedisKey', upload.single('file'), async (req, res) => {
   console.log("logs for sortedAsRedisKey:",req)
   try {
     const { file } = req;
@@ -210,6 +215,48 @@ app.post('/sortedAsRedisKey', upload.single('file'), async (req, res) => {
     res.status(500).json({ error: 'Server error while uploading image' });
   }
 });
+*/
+
+
+
+app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
+  const timestamp = Date.now();
+  console.log(`${timestamp} - 📥 /sortedAsRedisKey invoked`);
+
+  try {
+    const file = req.file;
+    const redisKey = req.body.key;
+    const base64FromBody = req.body.base64;
+
+    if (!file) {
+      return res.status(400).json({ error: '❌ No image blob received in formData.' });
+    }
+
+    if (!redisKey) {
+      return res.status(400).json({ error: '❌ Redis key missing in formData.' });
+    }
+
+    console.log(`${timestamp} - 🖼️ Image Received:`, {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+    });
+
+    // Choose whether to use base64 from client or server-side conversion
+    const buffer = file.buffer;
+    const base64 = base64FromBody || buffer.toString('base64');
+
+    // ✅ Store in Redis
+    await setDataWithExpiry(redisKey, base64);
+    console.log(`${timestamp} - ✅ Image stored in Redis under key: ${redisKey}`);
+
+    res.status(200).json({ message: '✅ Image stored in Redis', key: redisKey });
+  } catch (err) {
+    console.error(`${Date.now()} - ❌ Error in /sortedAsRedisKey:`, err);
+    res.status(500).json({ error: 'Server error while uploading image' });
+  }
+});
+
 
 
 // Create a storage strategy
@@ -238,6 +285,60 @@ app.post('/upload', uploada.array('images', 10), (req, res) => {
   } catch (err) {
     console.error('Upload error:', err);
     res.status(500).json({ message: 'Server error', error: err });
+  }
+});
+
+const upload_temp = multer({ dest: 'temp_uploads/' }); // temp folder (auto-created if missing)
+
+app.post('/images/temp', upload_temp.single('file'), async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] 🔍 /images/temp upload initiated`);
+
+  try {
+    const file = req.file;
+    const { productId, productName, tag } = req.body;
+
+    if (!file) {
+      console.warn(`[${timestamp}] ❌ No file uploaded`);
+      return res.status(400).json({ error: 'No file uploaded.' });
+    }
+
+    // ✅ Validation
+    const allowedTypes = ['image/jpeg', 'image/png'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      console.warn(`[${timestamp}] ❌ Invalid MIME type: ${file.mimetype}`);
+      fs.unlinkSync(file.path);
+      return res.status(400).json({ error: 'Only JPEG/PNG files are allowed.' });
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      console.warn(`[${timestamp}] ❌ File too large: ${file.size}`);
+      fs.unlinkSync(file.path);
+      return res.status(400).json({ error: 'File size exceeds 5MB limit.' });
+    }
+
+    // ✅ Optional: Rename and store temporarily
+    const tempDir = path.join('temp_uploads');
+    const newFileName = `temp_${productId}_${Date.now()}_${file.originalname}`;
+    const finalPath = path.join(tempDir, newFileName);
+
+    fs.renameSync(file.path, finalPath);
+    console.log(`[${timestamp}] ✅ Temp file stored as: ${finalPath}`);
+
+    return res.status(200).json({
+      message: '✅ Temp image uploaded',
+      fileName: newFileName,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+      productId,
+      productName,
+      tag,
+      storedPath: finalPath
+    });
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] ❌ Server error:`, err);
+    return res.status(500).json({ error: 'Server error while uploading image.' });
   }
 });
 

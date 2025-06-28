@@ -73,21 +73,21 @@ const removeEstimateById = async(req, res) =>{
 const getEstimates = async(req, res) =>{
 
 
-  console.log(`${cacheKey} backend started...`);
+  console.log( formattedDate() + ` ${cacheKey} backend started...`);
 
   const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
   const _pgQuery = `SELECT * FROM ${cacheKey}`;
-  console.log("Now Quering : Key[" + cacheKey + "] mysql:[" + _mysqlQuery + "] pgSql:" + _pgQuery + "]");
+  console.log(formattedDate() + "Now Quering : Key[" + cacheKey + "] mysql:[" + _mysqlQuery + "] pgSql:" + _pgQuery + "]");
 
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
     res.status(200).send(data);
   } catch (error) {
-    console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
+    console.error(formattedDate() + `getCachedOrQuery error for ${cacheKey}:`, error);
     res.status(500).send({
       success: false,
-      message: `Error fetching ${cacheKey}`,
+      message: `${formattedDate()} Error fetching ${cacheKey}`,
       error: error.message || error,
     });
   }

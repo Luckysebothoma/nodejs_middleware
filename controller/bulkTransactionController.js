@@ -1,7 +1,10 @@
- import ControllerHandler from "../utils/ControllerHandler.js";
+import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
-
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+
+import { getConnection, mysqlPool } from '../config/db.js'
+
 
 const {
   getCachedOrQuery,
@@ -12,7 +15,7 @@ const {
 
 /*
 const addNewCandy = async(req, res) =>{
-    const connection = await mysqlPool.getConnection(); // Get a connection from the pool
+    const connection = await getConnection(); // Get a connection from the pool
     await connection.beginTransaction(); // Start the transaction
 
 
@@ -91,16 +94,13 @@ const addNewCandy_with_image = async(req,res) => {
 const addNewCandy = async(req, res) =>{
 
   const { addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing } = req.body;
-  
-  
-//  const connection = await mysqlPool.createConnection(); // Get a connection from the pool
-
+    
+  const connection = await getConnection(); // Get a connection from the pool
 
 // Process each part as needed
-
 res.json({ message: 'Data received successfully' });
 
-// await mysqlPool.beginTransaction(); // Start the transaction
+ await connection.beginTransaction(); // Start the transaction
 
 // Example of logging each part
 console.log("" + ' \n Add Product Request:', addProductListRequest);
@@ -111,13 +111,11 @@ console.log("" + '\n Add Available Items:', addAvailableItemsRequest);
 
 console.log("" + '\n Add Price Tracing:', addPriceTracing);
 
-
-const productResult = await addProductRecord(addProductListRequest);
-const yummyResult = await addYummyRecord(addProductPricingRequest);
-const available_itemsResult = await addAvailableItems(addAvailableItemsRequest)
-const price_tracing_Result = await addPriceTrace(addPriceTracing);
-
-
+try {
+const productResult = await addProductRecord(addProductListRequest, connection);
+const yummyResult = await addYummyRecord(addProductPricingRequest, connection);
+const available_itemsResult = await addAvailableItems(addAvailableItemsRequest, connection)
+const price_tracing_Result = await addPriceTrace(addPriceTracing, connection);
 // Example of logging each part
 console.log(productResult + ' \n Add Product Request:', addProductListRequest);
 
@@ -126,6 +124,31 @@ console.log(yummyResult + '\n Add Yummy Request:', addProductPricingRequest);
 console.log(available_itemsResult + '\n Add Available Items:', addAvailableItemsRequest);
 
 console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
+
+  
+
+} catch (error) {
+  await connection.rollback(); // Always await rollback
+  const errorMessage = `${getLongTime()}: 🔥 Rollback Operation: ${error}`;
+  
+  console.error(errorMessage);
+
+  if (!res.headersSent) {
+    return res.status(500).send({ success: false, message: errorMessage });
+  }
+
+} finally {
+  connection.release();
+
+  // ✅ Only send success if no headers have been sent (not in error)
+  if (!res.headersSent) {
+    return res.status(200).send({
+      success: true,
+      message: `${getLongTime()}: Operation completed successfully`,
+    });
+  }
+}
+
 
 
 }
@@ -150,6 +173,8 @@ console.log("" + '\n Add Yummy Request:', addProductPricingRequest);
 console.log("" + '\n Add Available Items:', addAvailableItemsRequest);
 
 console.log("" + '\n Add Price Tracing:', addPriceTracing);
+
+// Create DB connection
 
 
 const productResult = await addProductRecord(addProductListRequest);
@@ -176,13 +201,18 @@ const {productId} = req.body;
   console.log("Product Id [" + productId + "] to be removed")
 
 try{
-const deleteAvailableResults = deleteAvailableItems(productId);
-const CartListResults = deleteCartList(productId);
-const deleteEstimatesResults =deleteEstimates(productId);
-const deletePriceTracingResults =deletePriceTracing(productId);
-const deleteProductItemPricingResults =deleteProductItemPricing(productId);
-const deleteStockItemsResults =deleteStockItems(productId);
+const deleteAvailableResults = await deleteAvailableItems(productId);
+const CartListResults = await deleteCartList(productId);
+const deleteEstimatesResults = await deleteEstimates(productId);
+const deletePriceTracingResults = await deletePriceTracing(productId);
+const deleteProductItemPricingResults = await deleteProductItemPricing(productId);
+const deleteStockItemsResults = await deleteStockItems(productId);
 
+
+//delete productlist
+// delet yummylist
+
+  
 
 res.status(200).send({
   success:true,
@@ -208,7 +238,8 @@ res.status(200).send({
 }
 
 // Reusable function to insert product records
-async function addProductRecord(addProductListRequest) {
+async function addProductRecord(addProductListRequest, mySqlConnection) {
+    console.log(getLongTime()+": addProductRecord called..!")
 
 
 
@@ -229,17 +260,31 @@ const pgInsertQuery = `
 
 const replacements = [addProductListRequest.productId, addProductListRequest.productName,addProductListRequest.productFlavor,addProductListRequest.productPrice, addProductListRequest.image_url];
 
-const result = addCachedAndQuery(key,query,pgInsertQuery, replacements);
 // Execute the query
 // const result = await mysqlPool.query(query, replacements);
 
+try {
 
-return result;
+
+  const result = addCachedAndQuery(key,query,pgInsertQuery, replacements, mySqlConnection);
+  return result;
+  
+} catch (error) {
+
+  await mySqlConnection.rollback();
+  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
+  throw `Exception on ${key} \n ${error} `;
+  
+}
+
+
 
 }
 
 // Reusable function to insert yummy records
-async function addYummyRecord(addProductPricingRequest) {
+async function addYummyRecord(addProductPricingRequest, mySqlConnection) {
+    console.log("addYummyRecord called..!")
+
   console.log("addYummyRecord \n "+ addProductPricingRequest);
   const key = "productPricing";
   const query = `
@@ -260,13 +305,23 @@ async function addYummyRecord(addProductPricingRequest) {
     addProductPricingRequest.productSize
   ];
 
-  const result = addCachedAndQuery(key, query, pgInsertQuery, replacements);
+try {
 
+  const result = addCachedAndQuery(key,query,pgInsertQuery, replacements, mySqlConnection);
   return result;
+  
+} catch (error) {
+
+  await mySqlConnection.rollback();
+  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
+  throw `Exception on ${key} \n ${error} `;
+  
+}
 }
 
 // Reusable function to insert available items
-async function addAvailableItems(addAvailableItemsRequest) {
+async function addAvailableItems(addAvailableItemsRequest, mySqlConnection) {
+  console.log("addAvailableItems called..!")
   const key = "availableItems";
   const query = `
     INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
@@ -282,13 +337,22 @@ async function addAvailableItems(addAvailableItemsRequest) {
     addAvailableItemsRequest.lastUpdated
   ];
 
-  const result = addCachedAndQuery(key, query, pgInsertQuery, replacements);
+try {
 
-return result;
+  const result = addCachedAndQuery(key,query,pgInsertQuery, replacements, mySqlConnection);
+  return result;
+  
+} catch (error) {
+
+  await mySqlConnection.rollback();
+  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
+  throw `Exception on ${key} \n ${error} `;
+  
+}
 }
 
 // Reusable function to insert price tracing records
-async function addPriceTrace(addPriceTracing) {
+async function addPriceTrace(addPriceTracing, mySqlConnection) {
 
   const key = "priceTracing";
   const query = `
@@ -305,9 +369,18 @@ async function addPriceTrace(addPriceTracing) {
     addPriceTracing.lastUpdated
   ];
 
-  const result = addCachedAndQuery(key, query, pgInsertQuery, replacements);
+  try {
 
-return result;
+  const result = addCachedAndQuery(key,query,pgInsertQuery, replacements, mySqlConnection);
+  return result;
+  
+} catch (error) {
+
+  await mySqlConnection.rollback();
+  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
+  throw `Exception on ${key} \n ${error} `;
+  
+}
 }
 
 async function deleteAvailableItems(productId){
