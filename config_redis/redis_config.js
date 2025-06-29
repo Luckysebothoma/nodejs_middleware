@@ -80,21 +80,62 @@ console.log(`🔎 Preparing to set Redis key "${key}" with value type:`, typeof 
 
 async function setDataWithExpiry(key, value, expirySeconds = 300) {
   const timestamp = new Date().toISOString();
-  const fullKey = `temp:${key}`; // ⏱️ Prefix added
+  const prefix = 'temp:';
+  const fullKey = `${prefix}${key}`;
 
-  console.log(`[${timestamp}] 🕵️‍♂️ Checking for existing key: "${fullKey}"`);
+  console.log(`[${timestamp}] 🕵️‍♂️ Validating input for key: "${fullKey}"`);
 
+  // Validate key
+  if (typeof key !== 'string' || key.trim() === '') {
+    const msg = `[${timestamp}] ❌ Invalid key. Must be a non-empty string. Received: ${typeof key}`;
+    console.error(msg);
+    throw new TypeError(msg);
+  }
+
+  // Serialize value safely
+  let redisValue;
+  try {
+    if (
+      value instanceof Buffer ||
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
+      redisValue = value.toString();
+    } else if (value instanceof Blob || value instanceof File) {
+      console.warn(`[${timestamp}] ⚠️ Value is a Blob/File. Storing metadata instead.`);
+      redisValue = JSON.stringify({
+        type: value.constructor.name,
+        size: value.size,
+        lastModified: value.lastModified || null,
+        name: value.name || 'unnamed',
+      });
+    } else if (value instanceof FormData) {
+      console.warn(`[${timestamp}] ⚠️ Value is FormData. Converting to plain object.`);
+      const plainObject = {};
+      for (const [k, v] of value.entries()) {
+        plainObject[k] = typeof v === 'string' ? v : '[Non-string FormData]';
+      }
+      redisValue = JSON.stringify(plainObject);
+    } else {
+      redisValue = JSON.stringify(value);
+    }
+  } catch (serializationError) {
+    const msg = `[${timestamp}] ❌ Failed to serialize value for key "${fullKey}"`;
+    console.error(msg, serializationError);
+    throw new Error(msg);
+  }
+
+  // Proceed with Redis
   try {
     const exists = await redisClient.exists(fullKey);
-
     if (exists) {
       console.warn(`[${timestamp}] ⚠️ Key already exists: "${fullKey}"`);
       return { status: 'exists', key: fullKey };
     }
 
-    await redisClient.setEx(fullKey, expirySeconds, value);
+    await redisClient.setEx(fullKey, expirySeconds, redisValue);
     console.log(`[${timestamp}] ✅ Key "${fullKey}" set with TTL: ${expirySeconds}s`);
-
     return { status: 'stored', key: fullKey };
   } catch (err) {
     console.error(`[${timestamp}] ❌ Error setting key "${fullKey}" with expiry:`, err);
@@ -103,7 +144,7 @@ async function setDataWithExpiry(key, value, expirySeconds = 300) {
 }
 
 
-const updateDataWithNoExpiry = async (key, newValue) => {
+async function updateDataWithNoExpiry_include_productId (key, newValue, productId){
   console.log(`${getLongTime()} ${getLongTime()} updateDataWithNoExpiry Started:`)
   try {
     // Step 1: Read old data
@@ -113,7 +154,7 @@ const updateDataWithNoExpiry = async (key, newValue) => {
     if (cached) {
 
       try {
-        updatedData = JSON.parse(cached);
+        updatedData = JSON.parse(cached); 
 
         if (!Array.isArray(updatedData)) {
           console.warn(`⚠️ Redis: Key "${key}" did not contain an array, reinitializing.`);
@@ -132,17 +173,62 @@ const updateDataWithNoExpiry = async (key, newValue) => {
     // Step 2: Delete old key
     const deleteResult = await redisClient.del(key);
     console.log(`${getLongTime()} 🧹 Redis: Key "${key}" deleted:`, deleteResult === 1 ? "✅ Redis cleanup after deletion" : "✅  not found after deletion");
+    const [ sourceOfTruth ] = router.get('/getProductBYId/:${productId}', getProductByID);
 
-    // Step 3: Append new value
-    updatedData.push(newValue);
-    console.log(`${getLongTime()} 📦 Redis key: [ ${key} ] New data after append:`, updatedData);
+    console.log(`${getLongTime()} 📦 Redis key: [ ${key} ] New data after append:`, sourceOfTruth);
 
     // Step 4: Set key again with no expiry
-    await redisClient.set(key, JSON.stringify(updatedData));
+    await redisClient.set(key, JSON.stringify(sourceOfTruth));
     console.log(`${getLongTime()} ✅ Redis: Key ["${key}"] updated with new data.`);
 
     return true;
   } catch (err) {
+
+    const msg =`❌ Redis: Error during update process for key "${key}":, ${err}`
+    console.error(msg);
+    return false;
+  }
+};
+const updateDataWithNoExpiry = async (key, newValue) => { 
+  console.log(`${getLongTime()} ${getLongTime()} updateDataWithNoExpiry Started:`)
+  try {
+    // Step 1: Read old data
+    const cached = await redisClient.get(key);
+    let updatedData = [];
+
+    if (cached) {
+
+      try {
+        updatedData = JSON.parse(cached); 
+
+        if (!Array.isArray(updatedData)) {
+          console.warn(`⚠️ Redis: Key "${key}" did not contain an array, reinitializing.`);
+          updatedData = [];
+        } else {
+          console.log(`${getLongTime()} 📥 Redis: Existing data fetched for key "${key}":`, updatedData);
+        }
+      } catch (parseErr) {
+        console.error(`${getLongTime()} ❌ Redis: Failed to parse data for key "${key}":`, parseErr);
+        return false;
+      }
+    } else {
+      console.log(`${getLongTime()} ℹ️ Redis: No existing data found for key "${key}", starting fresh.`);
+    }
+
+    // Step 2: Delete old key
+    const deleteResult = await redisClient.del(key);
+    console.log(`${getLongTime()} 🧹 Redis: Key "${key}" deleted:`, deleteResult === 1 ? "✅ Redis cleanup after deletion" : "✅  not found after deletion");
+    const [ sourceOfTruth ] = 
+    // Step 3: Append new value
+    console.log(`${getLongTime()} 📦 Redis key: [ ${key} ] New data after append:`, updatedData);
+
+    // Step 4: Set key again with no expiry
+    await redisClient.set(key, JSON.stringify(newValue));
+    console.log(`${getLongTime()} ✅ Redis: Key ["${key}"] updated with new data.`);
+
+    return true;
+  } catch (err) {
+        setDataWithNoExpiry(key,newValue);
 
     const msg =`❌ Redis: Error during update process for key "${key}":, ${err}`
     console.error(msg);
@@ -322,5 +408,6 @@ export default {
   addToSet,
   removeFromSet,
   setDataWithExpiry,
-  setRedisDataWithNoExpiry
+  setRedisDataWithNoExpiry,
+  updateDataWithNoExpiry_include_productId
 };

@@ -1,4 +1,4 @@
-import redisConfig, { updateDataWithNoExpiry } from '../config_redis/redis_config.js';
+import redisConfig, { setDataWithExpiry, updateDataWithNoExpiry } from '../config_redis/redis_config.js';
 const { removeData, setData, getData, keyExists,  setDataWithNoExpiry} = redisConfig;
 // import mysqlPool  from '../config/db.js';
 import { pgClient } from '../config/postgres.js';
@@ -63,9 +63,9 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
       if (mysqlResult?.length) {
         console.log(`${getLongTime()}[MySQL SUCCESS] ${key} : ${mysqlResult.length}`);
         //await setData(key, JSON.stringify(mysqlResult), "EX", TTL_SECONDS);
-        //await setDataWithNoExpiry(key)
 
-        connection.release();
+        await setDataWithExpiry(key, mysqlResult);
+
         return mysqlResult;
 
 
@@ -75,7 +75,7 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
       }
     } catch (mysqlErr) {
       connection.release();
-      console.warn(`[MySQL ERROR] ${mysqlErr.message}`);
+      console.warn(`[MySQL ERROR] for key ${key} ${mysqlErr.message}`);
       throw mysqlErr;
     }finally {
       if(connection ){
@@ -96,7 +96,6 @@ const getCachedOrQuery = async (key, mysqlQuery, pgQuery) => {
 
   }
 };
-
 
 // Configure multer for memory storage
 const storage = memoryStorage();
@@ -192,26 +191,7 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, pgInsertQuery = null, va
       //await mysqlConnection.commit();
       //console.log(`🔒 MySQL transaction committed for key: [${key}]`);
 
-      // Redis caching
-      try {
-        const replacementsObj = Object.fromEntries(
-          values.map((v, i) => [`param${i}`, v])
-        );
-        console.log(`${getLongTime()}Done prep data to insert to db, Key[${JSON.stringify(key)}] value[${values}]`);
-        const redisCachStatus = await updateDataWithNoExpiry(key, replacementsObj);
-        if(!redisCachStatus){
 
-          console.log(getLongTime() + " ❌ AddCacheAndQuery: SOmething wrong happening while updating Data With No Expiry")
-        }
-
-
-        console.log(`${getLongTime()}🧠 Redis cache updated for key: [${key}]`
-
-        );
-      } catch (cacheErr) {
-        console.warn(`⚠️ Redis cache update failed for key: [${key}]:`, cacheErr);
-        return `✅ Inserted [${key}] but failed to update Redis`;
-      }
 
       return `✅ Successfully added [${key}]`;
 
@@ -271,17 +251,16 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery = null, 
 
   const connection = await getConnection();
 
-  let mysqlResult = null;
   let pgResult = null;
   let result = null;
   let mysqlSuccess = false;
   let pgSuccess = true; // Default to true if pgUpdateQuery not provided
 
-  console.log(`${getLongTime()}🛠️ Starting DB update and cache for key: [${key}]`);
-
+  console.log(`${getLongTime()} 🛠️ Starting DB update and cache for key: [${key}]`);
+  mysqlResult= []
   try {
     await connection.beginTransaction();
-    console.log(`${getLongTime()}🔄 MySQL Transaction started for key: [${key}]`);
+    console.log(`${getLongTime()} 🔄 MySQL Transaction started for key: [${key}]`);
 
     // MySQL Update
     try {
@@ -290,51 +269,34 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, pgUpdateQuery = null, 
 
       if (mysqlResult.affectedRows === 0) {
         console.warn(`⚠️ No record updated in MySQL for key: [${key}]`);
+
+        
       } else {
         console.log(`${getLongTime()}✅ MySQL update succeeded for key: [${key}]`);
+
+            // Redis Cache Update
+    if (mysqlResult) {
+      console.log(`${getLongTime()}🧠 Updating Redis cache for key: [${key}]`);
+
+      // You can adjust the logic here to build a consistent object from the result or `replacements`
+      const cacheValue = Array.isArray(mysqlResult)
+        ? Object.fromEntries(replacements.map((val, idx) => [`param${idx}`, val]))
+        : {};
+
+      await updateDataWithNoExpiry(key, mysqlResult); // Assumes this function handles JSON.stringify etc.
+    } else {
+      console.warn(`⚠️ No valid result for Redis cache on key: [${key}]`);
+    }
+
+
       }
     } catch (mysqlErr) {
       console.Error(`${getLongTime()} ❌ MySQL update failed for key: [${key}]`, mysqlErr);
     }
 
-    // PostgreSQL Update (if provided)
-    if (pgUpdateQuery) {
-      try {
-        pgResult = await pgClient.query(pgUpdateQuery, replacements);
-        pgSuccess = true;
-        console.log(`${getLongTime()}✅ PostgreSQL update succeeded for key: [${key}]`);
-      } catch (pgErr) {
-        pgSuccess = false;
-        console.Error(`${getLongTime()} ❌ PostgreSQL update failed for key: [${key}]`, pgErr);
-      }
-    }
+   
 
-    // Determine fallback result
-    if (mysqlSuccess && pgSuccess) {
-      result = mysqlResult;
-    } else if (mysqlSuccess) {
-      console.warn(`⚠️ Using MySQL result only for key: [${key}]`);
-      result = mysqlResult;
-    } else if (pgSuccess) {
-      console.warn(`⚠️ Using PostgreSQL result only for key: [${key}]`);
-      result = pgResult;
-    } else {
-      throw new Error("Both MySQL and PostgreSQL updates failed");
-    }
 
-    // Redis Cache Update
-    if (result) {
-      console.log(`${getLongTime()}🧠 Updating Redis cache for key: [${key}]`);
-
-      // You can adjust the logic here to build a consistent object from the result or `replacements`
-      const cacheValue = Array.isArray(replacements)
-        ? Object.fromEntries(replacements.map((val, idx) => [`param${idx}`, val]))
-        : {};
-
-      await updateDataWithNoExpiry(key, cacheValue); // Assumes this function handles JSON.stringify etc.
-    } else {
-      console.warn(`⚠️ No valid result for Redis cache on key: [${key}]`);
-    }
 
     await connection.commit();
     console.log(`${getLongTime()}✅ Transaction committed successfully for key: [${key}]`);
@@ -457,13 +419,13 @@ const insertWithIncrementRetry = async (
   console.log(getLongTime() + " 🔌 Connection Type:", mySqlConnection?.constructor?.name);
 
   if (!mysqlInsertQuery || typeof mysqlInsertQuery !== 'string') {
-    throw new Error(`${getLongTime()} ❌ mysqlInsertQuery is invalid for key: ${key}`);
+    throw new error(`${getLongTime()} ❌ mysqlInsertQuery is invalid for key: ${key}`);
   }
   if (!Array.isArray(replacements)) {
-    throw new Error(`${getLongTime()} ❌ values is not an array for key: ${key}`);
+    throw new error(`${getLongTime()} ❌ values is not an array for key: ${key}`);
   }
   if (!mySqlConnection) {
-    throw new Error(`${getLongTime()} ❌ mysqlConnection is invalid for key: ${key}`);
+    throw new error(`${getLongTime()} ❌ mysqlConnection is invalid for key: ${key}`);
   }
 
 

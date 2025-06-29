@@ -2,6 +2,11 @@
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+import redisConfig, { setDataWithExpiry, updateDataWithNoExpiry } from '../config_redis/redis_config.js';
+const { removeData, setData, getData, keyExists,  setDataWithNoExpiry} = redisConfig;
+import { getConnection } from '../config/db.js';
+
  
 const { 
   getCachedOrQuery,
@@ -65,6 +70,72 @@ const getProductList = async (req, res) => {
     });
   }
 
+};
+
+// Function to get product by ID (not an HTTP handler)
+const _getProductByID = async (productId) => {
+    try {
+        if (!productId) {
+            return {
+                success: false,
+                message: "Invalid or missing product ID"
+            };
+        } else {
+            const query = 'SELECT * FROM productList WHERE productId = :productId'
+                const replacements= [productId]
+
+  console.log(`${getLongTime()} 🛠️ Starting DB update and cache for productId: [${productId}]`);
+
+  try {
+    const connection = getConnection();
+    await connection.beginTransaction();
+    console.log(`${getLongTime()} 🔄 MySQL Transaction started for productId: [${productId}]`);
+
+    // MySQL Update
+    try {
+      [mysqlResult] = await connection.query(query, replacements);
+ 
+      if (mysqlResult.affectedRows === 0) {
+        console.warn(`⚠️ No record updated in MySQL for productId: [${productId}]`);
+
+      } else {
+        console.log(`${getLongTime()}✅ MySQL update succeeded for productId: [${productId}]`);
+
+        return JSON.parse[mysqlResult];
+      }
+    } catch (mysqlErr) {
+      console.Error(`${getLongTime()} ❌ MySQL update failed for productId: [${productId}]`, mysqlErr);
+    }
+
+
+    // Determine fallback result
+    if (mysqlResult) {
+    
+    } else if (mysqlSuccess) {
+      console.log(`✅ MUsing MySQL result only for key: [${key}]`);
+ 
+    } else {
+      throw new Error("❌  MySQL updates failed");
+    }
+ 
+    console.Error(`${getLongTime()} 🔥 Transaction rollback for key: [${key}] due to error:`, err.message);
+    return `❌ Update failed for key: [${key}]`;
+
+  } finally {
+    connection.release();
+    console.log(`${getLongTime()}🔚 Connection released for key: [${key}]`);
+  }
+
+
+        }
+    } catch (error) {
+        console.log(error);
+        return {
+            success: false,
+            message: "Error in getProductByID function, Passed ID=" + productId,
+            error
+        };
+    }
 };
 
 const getProductByID = async(req,res) => {
@@ -427,4 +498,4 @@ const addProduct = async(req, res) => {
 
 }
 
-export default {getProductList, getProductByID, updateProduct, deleteProduct, addProduct, purgingProduct}
+export default {getProductList, getProductByID, updateProduct, deleteProduct, addProduct, purgingProduct, _getProductByID}

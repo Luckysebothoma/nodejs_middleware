@@ -4,6 +4,8 @@ const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
 
 import { getConnection, mysqlPool } from '../config/db.js'
+import { removeData } from "../config_redis/redis_config.js";
+import { redisClient } from "../config_redis/redis_config.js";
 
 
 const {
@@ -12,6 +14,30 @@ const {
   updateCachedOrQuery,
   removeCachedAndQuery
 } = ControllerHandler;
+
+
+const productPricingKey = "productPricing";
+const availableItemsKey = "availableItems"
+const cartListKey = "cartList"
+const estimatesKey = "estimates"
+const productInventoryKey = "productInventory"
+const productItemPricingKey = "productItemPricing"
+const productListKey = "productList"
+const sodEodItemsKey = "sodEodItems"
+const stockItemsKey = "stockItems"
+const stockedItemsKey = "stockedItems"
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*
 const addNewCandy = async(req, res) =>{
@@ -152,6 +178,55 @@ console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
 
 
 }
+
+export const deleteAllProductData = async (productId, redisClient) => {
+  const dataTargets = [
+    { key: "productPricing", table: "productPricing" },
+    { key: "availableItems", table: "availableItems" },
+    { key: "cartList", table: "cartList" },
+    { key: "estimates", table: "estimates" },
+    { key: "productInventory", table: "productInventory" },
+    { key: "productItemPricing", table: "productItemPricing" },
+    { key: "productList", table: "productList" },
+    { key: "sodEodItems", table: "sodEodItems" },
+    { key: "stockItems", table: "stockItems" }
+  ];
+
+  for (const { key, table } of dataTargets) {
+    await deleteRedisAndMySQL(productId, redisClient, key, table);
+  }
+};
+export const deleteRedisAndMySQL = async (productId, redisClient, redisKey, mysqlTable) => {
+  const query = `DELETE FROM \`${mysqlTable}\` WHERE productId = ?`;
+  const values = [productId];
+
+  let conn;
+
+  try {
+    conn = await mysqlPool.getConnection();
+    const [mysqlResult] = await conn.query(query, values);
+
+    if (mysqlResult.affectedRows > 0) {
+      const redisDelResult = await redisClient.del(redisKey);
+      console.log(`🗑️ MySQL + Redis delete complete. Redis deleted: ${redisDelResult > 0}`);
+    } else {
+      console.warn(`⚠️ No record found in MySQL table "${mysqlTable}" for productId: ${productId}`);
+    }
+
+    return { success: true, message: 'Delete operation completed' };
+
+  } catch (err) {
+    console.error(`🔥 Error during deleteRedisAndMySQL: ${err.message}`);
+    return { success: false, message: err.message };
+
+  } finally {
+    if (conn) conn.release();
+    // Do NOT call redisClient.release() unless it's a pooled client (like ioredis cluster)
+    // If redisClient is a regular Redis instance, just leave it open (or close it when app shuts down)
+  }
+};
+
+
 async function addNewCandy_function(addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing ){
 
   
@@ -194,48 +269,23 @@ console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
 
 
 }
-const deleteItem = async(req, res) =>{
+const deleteItem = async (req, res) => {
+  const { productId } = req.body;
+  console.log(`${getLongTime()}: 🧹 Deleting productId: [${productId}]`);
 
-const {productId} = req.body;
+  try {
+    await deleteAllProductData(productId, redisClient);
+    const msg = `🗑️ Product ID [${productId}] deleted successfully`;
+    console.log(`${getLongTime()}: ${msg}`);
+    res.status(200).send({ success: true, message: msg });
 
-  console.log("Product Id [" + productId + "] to be removed")
+  } catch (error) {
+    const errMsg = `${getLongTime()}: ❌ Failed to delete productId [${productId}]: ${error}`;
+    console.error(errMsg);
+    res.status(500).send({ success: false, message: errMsg });
+  }
+};
 
-try{
-const deleteAvailableResults = await deleteAvailableItems(productId);
-const CartListResults = await deleteCartList(productId);
-const deleteEstimatesResults = await deleteEstimates(productId);
-const deletePriceTracingResults = await deletePriceTracing(productId);
-const deleteProductItemPricingResults = await deleteProductItemPricing(productId);
-const deleteStockItemsResults = await deleteStockItems(productId);
-
-
-//delete productlist
-// delet yummylist
-
-  
-
-res.status(200).send({
-  success:true,
-  message:"ID [" + productId +"] DELETED \n "+ deleteStockItemsResults + "\n"
-  + CartListResults + "\n"
-  + deleteEstimatesResults + "\n"
-  + deletePriceTracingResults + "\n"
-  + deleteProductItemPricingResults + "\n"
-  + deleteStockItemsResults + "\n" 
-})
-
-}catch (error) {
-  console.log(error)
-  res.status(500).send({
-      success:false,
-      message:"Something happening while trying to delete",
-      error
-  })
-  
-}  
-
-
-}
 
 // Reusable function to insert product records
 async function addProductRecord(addProductListRequest, mySqlConnection) {
@@ -268,6 +318,8 @@ try {
 
   const result = addCachedAndQuery(key,query,pgInsertQuery, replacements, mySqlConnection);
   return result;
+  const removedKey = removeData(key);
+  const returnedAddCach = getCachedOrQuery()
   
 } catch (error) {
 

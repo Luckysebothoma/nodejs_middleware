@@ -1,6 +1,6 @@
  
 import { query } from "express";
-import { getData, keyExists, setDataWithNoExpiry } from "../config_redis/redis_config.js";
+import { getData, keyExists, setDataWithNoExpiry,setDataWithExpiry } from "../config_redis/redis_config.js";
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 
@@ -131,8 +131,8 @@ const getSodEodItems = async(req, res) =>{
             //const objectsOnly = dbData.filter(item => typeof item === 'object' && !Array.isArray(item));
             // Cache the data in Redis (set it for 1 hour)
 //            await setData(cacheKey, objectsOnly, 3600); // Cache for 1 hour
-            await setDataWithNoExpiry(cacheKey, dbDataResult)
-
+            //await setDataWithNoExpiry(cacheKey, dbDataResult);
+            await setDataWithExpiry(cacheKey, dbDataResult);
             // Send the filtered data to the client
              return res.status(200).send(dbDataResult);
             
@@ -143,7 +143,7 @@ const getSodEodItems = async(req, res) =>{
         console.log(error)
         res.status(500).send({
             success:false,
-            message:"Error in getting all",
+            message:"Error in getting all" + error,
             error
         })
     }

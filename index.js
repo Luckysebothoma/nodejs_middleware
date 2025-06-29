@@ -15,8 +15,33 @@ import { v4 as uuidv4 } from "uuid";
 import { auth } from "express-oauth2-jwt-bearer";
 import path from 'path';
 import { fileURLToPath } from 'url';
+// Only use default import and destructuring
+import redisConfig from "./config_redis/redis_config.js";
 
-import setDataWithExpiry from './config_redis/redis_config.js'
+
+import { logRequestDetails } from './utils/requestLogger.js';
+
+
+
+const {
+  getData,
+  keyExists,
+  setDataWithNoExpiry,
+  setDataWithExpiry,
+  removeData,
+  setData
+} = redisConfig;
+
+
+import ControllerHandler from "./utils/ControllerHandler.js"
+const {
+  getCachedOrQuery,
+  addCachedAndQuery,
+  updateCachedOrQuery,
+  removeCachedAndQuery
+} = ControllerHandler;
+
+const cacheKey = 'sodEodItems'; // Key to store the list in Redis
 
 
 
@@ -34,12 +59,6 @@ import {
   Pushgateway
 } from "prom-client";
 
-// Redis utilities
-import {
-  redisClient,
-  setData as set,
-  getData as get
-} from "./config_redis/redis_config.js";
 
 // Time utils
 import TimeUtils from "./utils/Time.js";
@@ -48,6 +67,8 @@ const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 // Load env vars
 config();
 const app = express();
+
+app.use(express.urlencoded({ extended: true }));
 
 // TLS Certs
 const credentials = {
@@ -103,16 +124,66 @@ register.registerMetric(redisStatus);
 register.registerMetric(componentErrors);
 
 
+export const requestLoggerMiddleware = (req, res, next) => {
+  logRequestDetails(req, '🌐 Global Request Logger');
+  next();
+};
+
+
 import studentsRoutes from "./routes/studentsRoutes.js";
 //import tempImage from "./routes/tempImage.js"
 
 app.use('/api/v1/student', studentsRoutes);
 //app.use('/temp',tempImage)
 
+app.post('/update-product', async (req, res) => {
+
+ 
+  
+  const productListCacheKey = "productList"
+  const { oldData, newData } = req.body;
+
+  if (!oldData || !newData) {
+    return res.status(400).json({ error: 'oldData and newData are required' });
+  }
+
+  const productId = newData.productId;
+
+  try {
+
+    // Save newData in MySQL - assume you have a table 'products' with columns matching newData keys
+    const sql = `
+      INSERT INTO products (productId, productName, productFlavor, productPrice, image_url)
+      VALUES (?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        productName = VALUES(productName),
+        productFlavor = VALUES(productFlavor),
+        productPrice = VALUES(productPrice),
+        image_url = VALUES(image_url)
+    `;
+//    const [result] = await pool.execute(sql, params);
+      const [Redisresult] = await updateCachedOrQuery("product_backup:"+productListCacheKey, sql, sql, oldData);
+      const [mySqlresult] = await updateCachedOrQuery(productListCacheKey, sql, sql, newData);
+
+
+    return res.status(200).json({
+      message: 'New data saved in MySQL, old data backed up in Redis',
+      mysqlResult: result
+
+    });
+
+  } catch (err) {
+    console.error('Error updating product:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 
 // POST /images/temp - Upload image to Redis only
 app.post('/images/temp-key', async (req, res) => {
-  
+
+   
   const { originalname, mimetype, buffer, size } = req.file || {};
   const { headers, method, url, body } = req;
   const logObj = {
@@ -144,15 +215,19 @@ app.post('/images/temp-key', async (req, res) => {
 
 // Routes
 app.get("/", (req, res) => {
-    console.log(`${getShortTime(new Date())} ${req.path} endpoint hit`)
 
+  
   res.status(200).send("Hello World!");
+ 
 });
 
 app.get("/metrics", async (req, res) => {
-  console.log(`${getShortTime(new Date())} ${req.path} endpoint hit`)
+
+ 
+  //console.log(`${getShortTime(new Date())} ${req.path} endpoint hit`)
   res.set("Content-Type", register.contentType);
   res.end(await register.metrics());
+ 
 });
 
 // Upload logic
@@ -166,7 +241,7 @@ const storage = diskStorage({
 const upload = multer({ dest: 'uploads/' }); // Will store file temporarily
 
 app.post("/images/temp", upload.single("file"), async (req, res) => {
-    console.log(`${getShortTime(new Date())} ${req.path} endpoint hit`)
+ 
 
   const key = req.query.key;
   if (!req.file || !key) return res.status(400).json({ error: "Missing file or key" });
@@ -183,9 +258,11 @@ app.post("/images/temp", upload.single("file"), async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: "Redis error" });
   }
+
+
+ 
 });
-import redisConfig from './config_redis/redis_config.js';
-const { removeData, setData, getData, keyExists,  setDataWithNoExpiry} = redisConfig;
+import updateRouter from "./routes/updateProductRoutemySql_Redis.js";
 
 // POST /sortedAsRedisKey
 /*app.post('/sortedAsRedisKey', upload.single('file'), async (req, res) => {
@@ -220,9 +297,9 @@ const { removeData, setData, getData, keyExists,  setDataWithNoExpiry} = redisCo
 
 
 app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
-  const timestamp = Date.now();
-  console.log(`${timestamp} - 📥 /sortedAsRedisKey invoked`);
+ 
 
+ 
   try {
     const file = req.file;
     const redisKey = req.body.key;
@@ -254,14 +331,20 @@ app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
   } catch (err) {
     console.error(`${Date.now()} - ❌ Error in /sortedAsRedisKey:`, err);
     res.status(500).json({ error: 'Server error while uploading image' });
+
   }
-});
+ 
+}
+
+
+);
 
 
 
 // Create a storage strategy
 const storageImages = multer.diskStorage({
   destination: function (req, file, cb) {
+ 
     cb(null, 'uploads/'); // Directory to save files
   },
   filename: function (req, file, cb) {
@@ -277,7 +360,6 @@ const uploada = multer({ storage: storageImages });
 app.post('/upload', uploada.array('images', 10), (req, res) => {
   try {
     const files = req.files;
-    console.log('Uploaded Files:', files);
     if (!files || files.length === 0) {
       return res.status(400).json({ message: 'No files uploaded' });
     }
@@ -292,7 +374,8 @@ const upload_temp = multer({ dest: 'temp_uploads/' }); // temp folder (auto-crea
 
 app.post('/images/temp', upload_temp.single('file'), async (req, res) => {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] 🔍 /images/temp upload initiated`);
+
+ 
 
   try {
     const file = req.file;
@@ -346,9 +429,24 @@ app.post('/images/temp', upload_temp.single('file'), async (req, res) => {
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
-app.get("/images/temp", async (req, res) => {
-    console.log(`${getShortTime(new Date())} ${req.path} endpoint hit`)
+app.get('/api/images/:key', async (req, res) => {
 
+ 
+
+
+  const { key } = req.params;
+  const redisKey = `temp:${key}`;
+  const imageData = await redisClient.getBuffer(redisKey); // Redis must store binary as buffer
+
+  if (!imageData) return res.status(404).send('Image not found');
+
+  res.setHeader('Content-Type', 'image/png'); // or image/jpeg
+  res.send(imageData);
+});
+
+
+app.get("/images/temp", async (req, res) => {
+ 
   const key = req.query.key;
   if (!key) return res.status(400).json({ error: "Missing key" });
 
@@ -367,6 +465,7 @@ const uploads = multer({ dest: 'uploads/' });
 
 // 👇 Must match the key used in FormData: 'files'
 app.post('/upload', upload.array('files'), async (req, res) => {
+ 
   const files = req.files;
 
   if (!files || files.length === 0) {
@@ -417,5 +516,11 @@ function startWorkerProcesses(app, credentials) {
     });
   }
 }
+
+// 🛡️ Optional: error handling middleware
+app.use((err, req, res, next) => {
+  console.error('🔥 Global Error Handler:', err.message);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
 
 startWorkerProcesses(app, credentials);
