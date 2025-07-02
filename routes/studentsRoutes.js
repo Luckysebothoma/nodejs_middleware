@@ -27,7 +27,7 @@ import productItemPricingController from "../controller/productItemPricing.js";
 const { addProductItemPricing, getProductItemPricingList, updateProductItemPricing, createProductItemPricing, deleteProductItemPricing } = productItemPricingController;
 
 import bulkTransactionController from "../controller/bulkTransactionController.js";
-const { addNewCandy, addNewCandy_with_image, deleteItem } = bulkTransactionController;
+const { addNewCandy, addNewCandy_with_image, deleteItem, updateProducts_Batch } = bulkTransactionController;
 
 import uploadImagesController from "../controller/uploadImages.js";
 const { uploadImages, uploadMiddleware } = uploadImagesController;
@@ -146,6 +146,8 @@ router.put('/updatePricingList', updatePricingList);
 
 router.post('/addNewCandy', addNewCandy);
 router.post("addNewCandy_with_image", addNewCandy_with_image)
+router.post('/updateProducts_Batch', updateProducts_Batch);
+
 
 // Transactions
 

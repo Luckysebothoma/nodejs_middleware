@@ -1,5 +1,6 @@
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
 
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
@@ -14,6 +15,7 @@ const {
 const cacheKey = 'stockedItems'; // Key to store the list in Redis
 
 const getStockList = async(req, res) =>{
+    logRequestDetails(req, "getStockList");
  console.log(`${cacheKey} backend started...`);
 
   const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
@@ -37,6 +39,7 @@ const getStockList = async(req, res) =>{
 }
 
 const deleteStock = async(req, res) =>{
+    logRequestDetails(req, "deleteStock");
     try {
 
         const productId = req.params.id;
@@ -49,30 +52,34 @@ const deleteStock = async(req, res) =>{
         }else{
 
 
-            try {
-				
-const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
-                const replacements = [productId];
+try {
+    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
+    const replacements = [cacheKey, productId];
 
-                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
-                res.status(200).send({
-                    success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
-                })
+    if (result.affectedRows > 0) {
+        res.status(200).send({
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+        });
+    } else {
+        res.status(404).send({
+            success: false,
+            message: `ID [${productId}] not found in [${cacheKey}]`,
+        });
+    }
 
+} catch (error) {
+    console.error(error);
+    res.status(500).send({
+        success: false,
+        message: "Error occurred while trying to delete.",
+        error,
+    });
+}
 
-
-            } catch (error) {
-                console.log(error)
-                res.status(500).send({
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                })
-                
-            }    
+  
         
 	 
 			
@@ -90,7 +97,7 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
 }
 
 const addStock = async(req, res) => {
-
+ logRequestDetails(req, "addStock");
     try {
         const { productId, productName,productFlavor,productPrice, lastUpdated, productQuantity} = req.body;
 
@@ -148,6 +155,7 @@ const addStock = async(req, res) => {
 }
 
 const addStockedItems = async(req, res) => {
+    logRequestDetails(req, "addStockedItems");
     const { productId, stockDate,stockId,stockPrice, stockQuantity} = req.body;
 
 
@@ -207,7 +215,7 @@ const addStockedItems = async(req, res) => {
 }
 
 const removeStockedItems = async(req, res) =>{
-
+logRequestDetails(req, "removeStockedItems");
 
 
     const productId  = req.params.id; // Extract student ID from the request URL
@@ -224,30 +232,33 @@ const removeStockedItems = async(req, res) =>{
         }else{
 
 
-            try {
-				
-const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
-                const replacements = [productId];
+try {
+    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
+    const replacements = [cacheKey, productId];
 
-                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
-                res.status(200).send({
-                    success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
-                })
+    if (result.affectedRows > 0) {
+        res.status(200).send({
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+        });
+    } else {
+        res.status(404).send({
+            success: false,
+            message: `ID [${productId}] not found in [${cacheKey}]`,
+        });
+    }
 
-
-
-            } catch (error) {
-                console.log(error)
-                res.status(500).send({
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                })
-                
-            }    
+} catch (error) {
+    console.error(error);
+    res.status(500).send({
+        success: false,
+        message: "Error occurred while trying to delete.",
+        error,
+    });
+}
+  
         
 	 
 			

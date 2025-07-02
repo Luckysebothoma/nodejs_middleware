@@ -1,5 +1,3 @@
-// utils/endpointLogMap.js
-
 export const endpointLogMap = [
   { method: 'GET',    path: '/',                  icon: '🛒', subject: 'Home Landing Page' },
   { method: 'GET',    path: '/metrics',           icon: '🔍', subject: 'Prometheus Monitoring Scraping' },
@@ -11,3 +9,10 @@ export const endpointLogMap = [
   { method: 'GET',    path: '/api/images/:key',   icon: '🔍', subject: 'Retrieving Images From Redis' },
   { method: 'GET',    path: '/images/temp',       icon: '🖼️', subject: 'Get Temporary Image' },
 ];
+
+export const matchEndpointLabel = (method, path) => {
+  
+  const match = endpointLogMap.find(route => route.method === method && route.path === path);
+
+  return match ? `${match.icon} ${match.subject}` : null;
+};

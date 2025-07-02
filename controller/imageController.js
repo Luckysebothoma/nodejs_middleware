@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+
+
 
 const router = Router();
 const upload = multer();
@@ -10,6 +13,8 @@ import { get, setEx } from "../config/redisClient";
 //redisClient.connect(); // Ensure Redis is connected
 
 router.get('/temp/:id', async (req, res) => {
+
+  logRequestDetails(req, "imageController");
   const key = `temp:image:${req.params.id}`;
   const data = await get(key);
   if (!data) return res.status(404).json({ message: 'Image not found or expired' });
@@ -28,6 +33,7 @@ router.get('/temp/:id', async (req, res) => {
 // POST /images/temp - Upload image to Redis only
 router.post('/temp', upload.single('image'), async (req, res) => {
   
+  logRequestDetails(req, "ImageController");
   const { originalname, mimetype, buffer, size } = req.file || {};
   const { headers, method, url, body } = req;
   const logObj = {

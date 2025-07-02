@@ -2,11 +2,10 @@ import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
 
 import { getConnection, mysqlPool } from '../config/db.js'
-import { removeData } from "../config_redis/redis_config.js";
-import { redisClient } from "../config_redis/redis_config.js";
-
+ 
 
 const {
   getCachedOrQuery,
@@ -32,12 +31,195 @@ const stockedItemsKey = "stockedItems"
 
 
 
+/*
+const updateProducts_Batch = async (req, res) => {
+  const { productList, pricingList, availableItems, priceTracingList } = req.body;
+  const connection = await getConnection();
+
+  // Pretty log the full incoming body
+  console.log("🟢 updateProducts_Batch called with body:\n", JSON.stringify(req.body, null, 2));
+
+  // Validate presence of root-level fields
+  const missingFields = [];
+  if (!productList) missingFields.push("productList");
+  if (!pricingList) missingFields.push("pricingList");
+  if (!availableItems) missingFields.push("availableItems");
+  if (!priceTracingList) missingFields.push("priceTracingList");
+
+  if (missingFields.length > 0) {
+    console.error("❌ Missing required root fields:", missingFields);
+    return res.status(400).json({ error: `Missing required fields: ${missingFields.join(", ")}` });
+  }
+
+  // Validate content of each array
+  const invalidEntries = [];
+
+  productList.forEach((p, i) => {
+    if (!p.productId || !p.productName || !p.productPrice) {
+      invalidEntries.push({ type: "productList", index: i, entry: p });
+    }
+  });
+
+  pricingList.forEach((p, i) => {
+    if (!p.productId || p.sellingPrice == null || p.productSize == null) {
+      invalidEntries.push({ type: "pricingList", index: i, entry: p });
+    }
+  });
+
+  availableItems.forEach((item, i) => {
+    if (!item.productId || item.itemsRemaining == null) {
+      invalidEntries.push({ type: "availableItems", index: i, entry: item });
+    }
+  });
+
+  priceTracingList.forEach((t, i) => {
+    if (!t.productId || !t.date) {
+      invalidEntries.push({ type: "priceTracingList", index: i, entry: t });
+    }
+  });
+
+  if (invalidEntries.length > 0) {
+    console.error("❌ Invalid sub-items detected:", JSON.stringify(invalidEntries, null, 2));
+    return res.status(400).json({ error: "Invalid entries in input data", invalidEntries });
+  }
+
+  try {
+    await connection.beginTransaction();
+
+    // ProductList insert
+    for (const p of productList) {
+      await connection.query(
+        `INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url) VALUES (?, ?, ?, ?, ?)`,
+        [p.productId, p.productName, p.productFlavor, p.productPrice, p.image_url]
+      );
+    }
+
+    // ProductPricing insert
+    for (const p of pricingList) {
+      await connection.query(
+        `INSERT INTO productPricing (productId, productSize, productQuantity, costPerItem, productProfit, sellingPrice, productCommission, itemGrouping)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          p.productId, p.productSize, p.productQuantity, p.costPerItem,
+          p.productProfit, p.sellingPrice, p.productCommission, p.itemGrouping
+        ]
+      );
+    }
+
+    // AvailableItems insert
+    for (const item of availableItems) {
+      await connection.query(
+        `INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
+         VALUES (?, ?, ?)`,
+        [item.productId, item.itemsRemaining, item.lastUpdated || new Date()]
+      );
+    }
+
+    // PriceTracing insert
+    for (const trace of priceTracingList) {
+      await connection.query(
+        `INSERT INTO priceTracing (productId, accAmount, date)
+         VALUES (?, ?, ?)`,
+        [trace.productId, trace.accAmount, trace.date]
+      );
+    }
+
+    await connection.commit();
+    console.log("✅ Batch insert successful.");
+return logResponseDetails(req, res, {
+      status: 200,
+      success: true });
+  } catch (error) {
+    await connection.rollback();
+    console.error("🔥 Batch insert error:", error);
+   return logResponseDetails(req, res, {
+      status: 500,
+     error: "Internal server error", details: error.message });
+  } finally {
+    await connection.end();
+  }
+};
 
 
+*/
 
+/*
+const updateProducts_Batch = async(req, res) =>{
+  
+  const { productList, pricingList, availableItems, priceTracingList } = req.body;
 
+  const connection = await getConnection();
 
+  // add req to logger and valid the passed var and display whats invalid or missing
+  console.log("updateProducts_Batch called with body:", req.body);
 
+  const missingFields = [];
+  if (!productList) missingFields.push("productList");
+  if (!pricingList) missingFields.push("pricingList");
+  if (!availableItems) missingFields.push("availableItems");
+  if (!priceTracingList) missingFields.push("priceTracingList");
+
+  if (missingFields.length > 0) {
+    console.error("Missing required fields:", missingFields);
+    return res.status(400).json({ error: `Missing required fields: ${missingFields.join(", ")}` });
+  }
+
+  try {
+    await connection.beginTransaction();
+
+    // ProductList insert
+    for (const p of productList) {
+      await connection.query(
+        'INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url) VALUES (?, ?, ?, ?, ?)',
+        [p.productId, p.productName, p.productFlavor, p.productPrice, p.image_url]
+      );
+    }
+
+    // ProductPricing insert
+    for (const p of pricingList) {
+      await connection.query(
+        'INSERT INTO productPricing (productId, productSize, productQuantity, costPerItem, productProfit, sellingPrice, productCommission, itemGrouping) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          p.productId, p.productSize, p.productQuantity, p.costPerItem,
+          p.productProfit, p.sellingPrice, p.productCommission, p.itemGrouping
+        ]
+      );
+    }
+
+    // AvailableItem insert
+    for (const item of availableItems) {
+      await connection.query(
+        `INSERT INTO availableItems (productId, itemsRemaining, lastUpdated) VALUES (?, ?, ?)`, 
+        [item.productId ]
+      );
+    }
+
+      
+
+    // PriceTracing insert
+    for (const trace of priceTracingList) {
+      await connection.query(
+        'INSERT INTO priceTracing (productId, accAmount, date) VALUES (?, ?, ?)',
+        [trace.productId, trace.accAmount, trace.date]
+      );
+    }
+
+    await connection.commit();
+return logResponseDetails(req, res, {
+      status: 200,
+      success: true });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Batch insert error:", error);
+   return logResponseDetails(req, res, {
+      status: 500,
+     error: error.message });
+  } finally {
+    await connection.end();
+  }
+}
+
+*/
 
 /*
 const addNewCandy = async(req, res) =>{
@@ -74,13 +256,16 @@ const addNewCandy = async(req, res) =>{
     
         // If all queries are successful, commit the transaction
         await connection.commit();
-        res.status(200).send({ success: true, message: 'All records added successfully!' });
+          logResponseDetails(req, res,  {
+        status: 200, success: true, message: 'All records added successfully!' });
     
       } catch (error) {
         // If an error occurs, rollback the transaction
         await connection.rollback();
         console.error('Transaction failed, rolled back:', error);
-        res.status(500).send({ success: false, message: 'Transaction failed', error });
+      return logResponseDetails(req, res, {
+      status: 500,
+     success: false, message: 'Transaction failed', error });
       } finally {
         connection.release(); // Release the connection back to the pool
       }
@@ -89,7 +274,93 @@ const addNewCandy = async(req, res) =>{
 
 */
 
+
+const updateProducts_Batch = async (req, res) => {
+
+  logRequestDetails(req, "updateProducts_Batch");
+
+  const { productList, pricingList, availableItems, priceTracingList } = req.body;
+  const connection = await getConnection();
+
+
+  console.log("🟢 updateProducts_Batch called with body:\n", JSON.stringify(req.body, null, 2));
+
+  const missingFields = [];
+  if (!productList) missingFields.push("productList");
+  if (!pricingList) missingFields.push("pricingList");
+  if (!availableItems) missingFields.push("availableItems");
+  if (!priceTracingList) missingFields.push("priceTracingList");
+
+  if (missingFields.length > 0) {
+    console.error("❌ Missing required root fields:", missingFields);
+
+    return logResponseDetails(req, res, {
+      status: 400,
+      error: `Missing required fields: ${missingFields.join(", ")}`
+    });
+  }
+
+  try {
+    await connection.beginTransaction();
+
+
+
+    await connection.query(
+        "INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE productName = VALUES(productName), productFlavor = VALUES(productFlavor), productPrice = VALUES(productPrice), image_url = VALUES(image_url)",
+        [productList.productId, productList.productName, productList.productFlavor, productList.productPrice, productList.image_url]
+      );
+
+
+  
+    await connection.query(
+        "INSERT INTO productPricing (productId, productSize, productQuantity, costPerItem, productProfit, sellingPrice, productCommission, itemGrouping) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE productSize = VALUES(productSize), productQuantity = VALUES(productQuantity), costPerItem = VALUES(costPerItem), productProfit = VALUES(productProfit), sellingPrice = VALUES(sellingPrice), productCommission = VALUES(productCommission), itemGrouping = VALUES(itemGrouping)",
+        [
+          pricingList.productId, pricingList.productSize, pricingList.productQuantity, pricingList.costPerItem,
+          pricingList.productProfit, pricingList.sellingPrice, pricingList.productCommission, pricingList.itemGrouping
+        ]
+      );
+
+   
+
+    await connection.query(
+        "INSERT INTO availableItems (productId, itemsRemaining, lastUpdated) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE itemsRemaining = VALUES(itemsRemaining), lastUpdated = VALUES(lastUpdated)",
+        [availableItems.productId, availableItems.itemsRemaining, availableItems.lastUpdated || new Date()]
+      );
+
+
+    await connection.query(
+        "INSERT INTO priceTracing (productId, accAmount, date) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE accAmount = VALUES(accAmount), date = VALUES(date)",
+        [priceTracingList.productId, priceTracingList.accAmount, priceTracingList.date]
+      );
+
+
+
+      
+    await connection.commit();
+    console.log("✅ Batch upsert completed.");
+return logResponseDetails(req, res, {
+      status: 200,
+      success: true });
+
+    
+  } catch (error) {
+    await connection.rollback();
+    console.error("🔥 Batch upsert error:", error);
+   return logResponseDetails(req, res, {
+      status: 500,
+     error: "Internal server error", details: error.message });
+
+  } finally {
+    await connection.end();
+  }
+};
+
+
+
 const addNewCandy_with_image = async(req,res) => {
+
+   logRequestDetails(req, "addNewCandy_with_image");
+
   console.log("addNewCandy_with_image Started")
   const { addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing, file } = req.body;
 
@@ -111,13 +382,15 @@ const addNewCandy_with_image = async(req,res) => {
     file.size
   ];
 
-  addCachedAndQuery("images", imageInsertQuery,imageInsertQuery,imageReplacements);
+  addCachedAndQuery("images", imageInsertQuery,imageReplacements);
 
 
   //await mysqlPool.query(imageInsertQuery, imageReplacements);
   
 }
 const addNewCandy = async(req, res) =>{
+
+   logRequestDetails(req, "addNewCandy");
 
   const { addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing } = req.body;
     
@@ -151,6 +424,7 @@ console.log(available_itemsResult + '\n Add Available Items:', addAvailableItems
 
 console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
 
+connection.commit(); // Lats Operation to commit to database
   
 
 } catch (error) {
@@ -160,7 +434,9 @@ console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
   console.error(errorMessage);
 
   if (!res.headersSent) {
-    return res.status(500).send({ success: false, message: errorMessage });
+   return logResponseDetails(req, res, {
+      status: 500,
+     success: false, message: errorMessage });
   }
 
 } finally {
@@ -168,7 +444,8 @@ console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
 
   // ✅ Only send success if no headers have been sent (not in error)
   if (!res.headersSent) {
-    return res.status(200).send({
+    return   logResponseDetails(req, res,  {
+        status: 200,
       success: true,
       message: `${getLongTime()}: Operation completed successfully`,
     });
@@ -270,6 +547,9 @@ console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
 
 }
 const deleteItem = async (req, res) => {
+
+   logRequestDetails(req, "deleteItem");
+
   const { productId } = req.body;
   console.log(`${getLongTime()}: 🧹 Deleting productId: [${productId}]`);
 
@@ -277,12 +557,15 @@ const deleteItem = async (req, res) => {
     await deleteAllProductData(productId, redisClient);
     const msg = `🗑️ Product ID [${productId}] deleted successfully`;
     console.log(`${getLongTime()}: ${msg}`);
-    res.status(200).send({ success: true, message: msg });
+    return   logResponseDetails(req, res,  {
+        status: 200, success: true, message: msg });
 
   } catch (error) {
     const errMsg = `${getLongTime()}: ❌ Failed to delete productId [${productId}]: ${error}`;
     console.error(errMsg);
-    res.status(500).send({ success: false, message: errMsg });
+  return logResponseDetails(req, res, {
+      status: 500,
+     success: false, message: errMsg });
   }
 };
 
@@ -299,10 +582,7 @@ const newProducFlavor = addProductListRequest.productFlavor;
 const newProductPrice = addProductListRequest.productPrice;
 const newProductImageURL =  addProductListRequest.image_url;
 const key = "productList"
-  const query = `
-  INSERT INTO productList (productId, productName,productFlavor,productPrice, image_url)
-  VALUES (?, ?, ?, ?, ?)
-`;
+  const query = `INSERT INTO productList (productId, productName,productFlavor,productPrice, image_url) VALUES (?, ?, ?, ?, ?)`;
 const pgInsertQuery = `
   INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url)
   VALUES ($1, $2, $3, $4, $5)
@@ -315,13 +595,13 @@ const replacements = [addProductListRequest.productId, addProductListRequest.pro
 
 try {
 
-
-  const result = addCachedAndQuery(key,query,pgInsertQuery, replacements, mySqlConnection);
-  return result;
-  const removedKey = removeData(key);
-  const returnedAddCach = getCachedOrQuery()
+ 
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
+   return result;
+  //const removedKey = removeData(key);
+  //const returnedAddCach = getCachedOrQuery()
   
-} catch (error) {
+} catch (error) { 
 
   await mySqlConnection.rollback();
   console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
@@ -339,10 +619,7 @@ async function addYummyRecord(addProductPricingRequest, mySqlConnection) {
 
   console.log("addYummyRecord \n "+ addProductPricingRequest);
   const key = "productPricing";
-  const query = `
-    INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `;
+  const query = `INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize) VALUES (?, ?, ?, ?, ?, ?, ?)`;
   const pgInsertQuery = `
     INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize)
     VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -359,7 +636,7 @@ async function addYummyRecord(addProductPricingRequest, mySqlConnection) {
 
 try {
 
-  const result = addCachedAndQuery(key,query,pgInsertQuery, replacements, mySqlConnection);
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
   return result;
   
 } catch (error) {
@@ -375,10 +652,7 @@ try {
 async function addAvailableItems(addAvailableItemsRequest, mySqlConnection) {
   console.log("addAvailableItems called..!")
   const key = "availableItems";
-  const query = `
-    INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
-    VALUES (?, ?, ?)
-  `;
+  const query = `INSERT INTO availableItems (productId, itemsRemaining, lastUpdated) VALUES (?, ?, ?)`;
   const pgInsertQuery = `
     INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
     VALUES ($1, $2, $3)
@@ -391,7 +665,7 @@ async function addAvailableItems(addAvailableItemsRequest, mySqlConnection) {
 
 try {
 
-  const result = addCachedAndQuery(key,query,pgInsertQuery, replacements, mySqlConnection);
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
   return result;
   
 } catch (error) {
@@ -407,10 +681,7 @@ try {
 async function addPriceTrace(addPriceTracing, mySqlConnection) {
 
   const key = "priceTracing";
-  const query = `
-    INSERT INTO priceTracing (productId, accAmount, date)
-    VALUES (?, ?, ?)
-  `;
+  const query = `INSERT INTO priceTracing (productId, accAmount, date) VALUES (?, ?, ?)`;
   const pgInsertQuery = `
     INSERT INTO priceTracing (productId, accAmount, date)
     VALUES ($1, $2, $3)
@@ -422,8 +693,8 @@ async function addPriceTrace(addPriceTracing, mySqlConnection) {
   ];
 
   try {
-
-  const result = addCachedAndQuery(key,query,pgInsertQuery, replacements, mySqlConnection);
+ 
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
   return result;
   
 } catch (error) {
@@ -481,4 +752,4 @@ return data;
 }
 
 
-export default {addNewCandy, addNewCandy_with_image, deleteItem}
+export default {addNewCandy, addNewCandy_with_image, deleteItem, updateProducts_Batch}

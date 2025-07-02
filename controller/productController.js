@@ -2,12 +2,11 @@
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+ import { getConnection } from '../config/db.js';
 
-import redisConfig, { setDataWithExpiry, updateDataWithNoExpiry } from '../config_redis/redis_config.js';
-const { removeData, setData, getData, keyExists,  setDataWithNoExpiry} = redisConfig;
-import { getConnection } from '../config/db.js';
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
 
- 
+
 const { 
   getCachedOrQuery,
   addCachedAndQuery,
@@ -17,18 +16,23 @@ const {
 const cacheKey = 'productList';
 
 const getProductList = async (req, res) => {
+
+    logRequestDetails(req, "getProductList");
+
 /*    try {
 
                 // If not in cache, query the database
         const [data] = await dbSequelize.query('SELECT * FROM productList');
         
         if (!data) { 
-            return res.status(404).send({
+            return return logResponseDetails(req, res, {
+      status: 404,
                 success: false,
                 message: "Resource not found"
             });
         } else if (data.length === 0) {
-            return res.status(200).send({
+            return return logResponseDetails(req, res, {
+      status: 200,
                 success: true,
                 data: [],
                 message: "No data available"
@@ -43,7 +47,8 @@ const getProductList = async (req, res) => {
 
     } catch (error) {
         console.error(error);
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
             success: false,
             message: "Error in fetching product list",
             error
@@ -59,11 +64,19 @@ const getProductList = async (req, res) => {
 
   try {
 
-    const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-    res.status(200).send(data);
+    const [data] = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
+    
+    return logResponseDetails(req, res, {
+        status: 200,
+        success: true,
+        data,
+        message: '🛒 Product list retrieved successfully',
+    });
+
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
-    res.status(500).send({
+    return logResponseDetails(req, res, {
+      status: 500,
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
@@ -74,12 +87,15 @@ const getProductList = async (req, res) => {
 
 // Function to get product by ID (not an HTTP handler)
 const _getProductByID = async (productId) => {
+
     try {
         if (!productId) {
-            return {
+
+            return logResponseDetails(req, res, {
+      status: 400,
                 success: false,
                 message: "Invalid or missing product ID"
-            };
+            });
         } else {
             const query = 'SELECT * FROM productList WHERE productId = :productId'
                 const replacements= [productId]
@@ -130,21 +146,24 @@ const _getProductByID = async (productId) => {
         }
     } catch (error) {
         console.log(error);
-        return {
+        return logResponseDetails(req, res, {
+      status: 400,
             success: false,
             message: "Error in getProductByID function, Passed ID=" + productId,
             error
-        };
+        });
     }
 };
 
 const getProductByID = async(req,res) => {
+    logRequestDetails(req, "getProductByID");
 
     try {
         productId = req.params.id;
 
         if(!productId){
-                return res.status(404).send({
+             return logResponseDetails(req, res, {
+      status: 404,
                     success:false,
                     message:"INvalid or Provide Student ID"
                 })
@@ -156,13 +175,15 @@ const getProductByID = async(req,res) => {
                 }); 
                 
                 if(!data){
-                    return res.status(404).send({
+                 return logResponseDetails(req, res, {
+      status: 404,
                         success:false,
                         message:"NO Recotdas found"
                     })
 
                 }else{
-                    res.status(200).send({
+                    return logResponseDetails(req, res, {
+      status: 200,
                         success:true, 
                         studentDetails:data
                     })
@@ -171,7 +192,8 @@ const getProductByID = async(req,res) => {
 
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
             success:false,
             message: "Error in Get Students by ID API, Passed ID=0"+ productId,
             error
@@ -180,162 +202,64 @@ const getProductByID = async(req,res) => {
 
 }
 
-const updateProduct = async(req, res) => {
-    //const productId  = req.params.id; // Extract student ID from the request URL
-   
-    let { productId, productName, productFlavor, productPrice, image_url} = req.body; // Extract updated values from the request body 
-    
-    //console.log("ProductList Obj ****** "+ productId + "_name " + productName + " _flavor " +productFlavor + " _price " + productPrice + " _image_url " + image_url); 
+const updateProduct = async (req, res) => {
+  logRequestDetails(req, "updateProduct");
 
-    if( productName ==null || productFlavor ==null || productPrice ==null || image_url==null
-        || productName==undefined || productFlavor==undefined || productPrice==undefined || image_url == undefined
-    
-        ){
+  const { productId, productName, productFlavor, productPrice, image_url } = req.body;
 
-            
-            return res.status(404).send({
-                success:false,
-                message:"ERROR ERROR ProductList Obj ****** "+ productId + "_name " + productName + " _flavor " +productFlavor + " _price " + productPrice + " _image_url " + image_url
-            })
+  // Basic validation
+  if (!productId || !productName || !productFlavor || !productPrice || !image_url) {
+    return logResponseDetails(req, res, {
+      status: 400,
+      success: false,
+      message: `❌ Invalid input: ${JSON.stringify(req.body)}`
+    });
+  }
 
+  // Use positional parameters (?)
+  const query = `
+    UPDATE ${cacheKey} 
+    SET productName = ?, productFlavor = ?, productPrice = ?, image_url = ? 
+    WHERE productId = ?
+  `;
 
-        }else{
-            try {
-    
-                // Construct the SQL UPDATE statement with replacements
-                const query = `
-                UPDATE productList 
-                SET 
-                    productName = :productName, 
-                    productFlavor = :productFlavor, 
-                    productPrice = :productPrice, 
-                    image_url = :image_url 
-                WHERE 
-                    productId = :productId `;
-            
-                // Execute the UPDATE statement with replacements , ,,
-                const replacements= [
-                    productId,
-                    productName,
-                    productFlavor,
-                    productPrice,
-                    image_url
-                ];
-                console.log('updating producrt List with replacements: ', replacements);
-                const data = await updateCachedOrQuery(cacheKey, query, query, replacements);
+  const replacements = [productName, productFlavor, productPrice, image_url, productId];
 
+  try {
+    const result = await updateCachedOrQuery(cacheKey, query, replacements);
 
-            }catch(error ){
+    console.log(`✅ ${cacheKey} updated successfully:`, result);
 
-                console.log(error);
-                res.status(500).send({
-                    success:false,
-                    message:"Something wrong happened while updating the record \n _name" + _name + " _flavor" +_flavor + " _price" + _price + " _image_url" + _image_url, 
-                    error
-                })
-
-            }
-            console.log("Success  ****** "+ productId + "_name " + productName + " _flavor " +productFlavor + " _price " + productPrice + " _image_url " + image_url); 
-            
-            const [data] = await dbSequelize.query('SELECT * FROM productList')
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-
-            return res.status(200).send({
-                success:true,
-                message:"Successfully UPdated ProductList Obj ****** "+ productId + "_name " + productName + " _flavor " +productFlavor + " _price " + productPrice + " _image_url " + image_url
-            })
-           
-        }
-
-
-
-
-    /*
-    try {
-
-
-
-        if(!productId){
-            console.log("productId Provided=> " + productId)
-            return res.status(404).send({
-                success:false,
-                message:"Invalid IR Or provide id => "+ productId
-            })
-
-        }else{
-
-            if( productName ==null || productFlavor ==null || productPrice ==null || image_url==null
-                || productName==undefined || productFlavor==undefined || productPrice==undefined || image_url == undefined
-            
-                ){
-                console.log("Values provided are not valid");
-                let { prproductName, productFlavor, productPrice, image_url} = req.body; // Extract updated values from the request body 
-                console.log("Values After re-entering the body para_ID "+ productId + "_name " + productName + " _flavor " +productFlavor + " _price " + productPrice + " _image_url " + image_url); 
-        
-            }else{
-                try {
-    
-                    // Construct the SQL UPDATE statement with replacements
-                    const sql = `
-                    UPDATE productList 
-                    SET 
-                        productName = :productName, 
-                        productFlavor = :productFlavor, 
-                        productPrice = :productPrice, 
-                        image_url = :image_url 
-                    WHERE 
-                        productId = :productId `;
-                
-                    // Execute the UPDATE statement with replacements , ,,
-                    const data = await dbSequelize.query(sql, {
-                      replacements: {
-                        productId,
-                        productName,
-                        productFlavor,
-                        productPrice,
-                        image_url
-                      },
-                      type: QueryTypes.UPDATE
-                    });
-        
-                    if(!data){
-                            res.status(500).send({
-                            success:false,
-                            message:"Error in Updateing"
-                            })
-        
-                    }else{
-                        res.status(200).send({
-                            success:true,
-                            message:"Successfully UPdated"
-                        })
-                    }
-                } catch (error) {
-                    console.log(error);
-                    res.status(500).send({
-                        success:false,
-                        message:"Something wrong happened while updating the record \n _name" + _name + " _flavor" +_flavor + " _price" + _price + " _image_url" + _image_url, 
-                        error
-                    })
-                }
-            }
-        }
-        
-    } catch (error) {
-        
-        console.log("Body Values para_ID "+ productId + "_name " + productName + " _flavor " +productFlavor + " _price " + productPrice + " _image_url " + image_url); 
-                    
-        res.status(500).send({
-            success:false,
-            message:"Error in Update Student API", 
-            error
-        })
+    if (!result || (result.affectedRows === 0 || result.rowCount === 0)) {
+      return logResponseDetails(req, res, {
+        status: 404,
+        success: false,
+        message: `❌ No rows updated in ${cacheKey}. Invalid productId or no changes.`,
+        result
+      });
     }
 
-    */
-}
+    return logResponseDetails(req, res, {
+      status: 200,
+      success: true,
+      message: `✅ ${cacheKey} updated successfully`,
+      result
+    });
+
+  } catch (error) {
+    console.error(`❌ Update error for ${cacheKey}:`, error);
+    return logResponseDetails(req, res, {
+      status: 500,
+      success: false,
+      message: `❌ Failed to update ${cacheKey}`,
+      error: error.message
+    });
+  }
+};
 
 const purgingProduct = async (req, res) => {
+
+    logRequestDetails(req, "purgingProduct");
 	        const productId = req.params.id;
 
 	console.log("purgeProduct");
@@ -345,7 +269,8 @@ const purgingProduct = async (req, res) => {
 
 	
         if (!productId) {
-            return res.status(404).send({
+         return logResponseDetails(req, res, {
+      status: 404,
                 success: false,
                 message: "Please provide a product ID"
             });
@@ -366,19 +291,22 @@ const purgingProduct = async (req, res) => {
 
         // Check if both queries were successful
         if (pricingDeleteResult[0].affectedRows === 0 || productListDeleteResult[0].affectedRows === 0) {
-            return res.status(404).send({
+         return logResponseDetails(req, res, {
+      status: 404,
                 success: false,
                 message: "No product found with the provided ID"
             });
         }
 
-        return res.status(200).send({
+     return logResponseDetails(req, res, {
+      status: 200,
             success: true,
             message: "Product with ID " + productId + " deleted successfully from both tables"
         });
     } catch (error) {
         console.log(error);
-        return res.status(500).send({
+     return logResponseDetails(req, res, {
+      status: 500,
             success: false,
             message: "Error in deleting product",
             error: error.message // Send error message only
@@ -387,44 +315,48 @@ const purgingProduct = async (req, res) => {
 };
 
 const deleteProduct = async(req, res) =>{
+    logRequestDetails(req, "deleteProduct");
     try {
 
         const productId = req.params.id;
 
         console.log("Product Id: "+  productId);
         if(!productId){
-            return res.status(404).send({
+         return logResponseDetails(req, res, {
+      status: 404,
                 success:false,
                 message:"PLease provide student Id => " + productId
             })
         }else{
 
 
-            try {
-				
+try {
+    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
+    const replacements = [cacheKey, productId];
 
-const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
-                const replacements = [productId];
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
-                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+    if (result.affectedRows > 0) {
+        res.status(200).send({
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+        });
+    } else {
+        res.status(404).send({
+            success: false,
+            message: `ID [${productId}] not found in [${cacheKey}]`,
+        });
+    }
 
-                res.status(200).send({
-                    success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
-                })
-
-
-
-            } catch (error) {
-                console.log(error)
-                res.status(500).send({
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                })
-                
-            }    
+} catch (error) {
+    console.error(error);
+    res.status(500).send({
+        success: false,
+        message: "Error occurred while trying to delete.",
+        error,
+    });
+}
+   
         
 	 
 			
@@ -432,7 +364,8 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
         
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
             success:false,
             message: "Error in Deleting Student",
             error
@@ -442,7 +375,7 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
 }
 
 const addProduct = async(req, res) => {
-
+logRequestDetails(req, "addProduct");
 
     try {
         const { productId, productName,productFlavor,productPrice, image_url} = req.body;
@@ -460,7 +393,8 @@ const addProduct = async(req, res) => {
             || productName==undefined || productFlavor==undefined || productPrice==undefined || image_url == undefined
         
         ){
-            return res.status(500).send({
+         return logResponseDetails(req, res, {
+      status: 500,
                 success:false,
                 message:"PLease Provide all fields"
             })
@@ -486,7 +420,8 @@ const addProduct = async(req, res) => {
 
     } catch (error) {
         console.log(error)
-        res.status(404).send({
+        return logResponseDetails(req, res, {
+      status: 404,
             success:false,
             message:"Error in create Student API ",
             error

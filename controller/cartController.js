@@ -3,7 +3,9 @@ const cacheKey = "cartList";
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
- 
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+
+
 const {
   getCachedOrQuery,
   addCachedAndQuery,
@@ -11,18 +13,23 @@ const {
   removeCachedAndQuery
 } = ControllerHandler;
 const getCartList = async(req, res) =>{
+    logRequestDetails(req, "getCartList");
 /*
     try {
         // If not in cache, query the database
         console.log('Cache miss: Querying database');
         const [data] = await dbSequelize.query('SELECT * FROM cartList')
         if (!data) { 
-            return res.status(404).send({
+            return return logResponseDetails(req, res, {
+      status: 404,
+     
                 success: false,
                 message: "Resource not found"
             });
         } else if (data.length === 0) {
-            return res.status(200).send({
+            return return logResponseDetails(req, res, {
+      status: 200,
+     
                 success: true,
                 data: [],
                 message: "No data available"
@@ -40,7 +47,9 @@ const getCartList = async(req, res) =>{
 
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
+     
             success:false,
             message:"Error in getting all",
             error
@@ -61,7 +70,9 @@ const getCartList = async(req, res) =>{
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
 
     
-    res.status(500).send({
+    return logResponseDetails(req, res, {
+      status: 500,
+     
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
@@ -70,6 +81,7 @@ const getCartList = async(req, res) =>{
 }
 
 const add2Cart = async(req, res) => {
+    logRequestDetails(req, "add2Cart");
 
     try {
         const { productId, productName,productFlavor,productPrice} = req.body;
@@ -83,7 +95,9 @@ const add2Cart = async(req, res) => {
         if(productId === null||  productName=== null || productFlavor=== null || productPrice=== null 
             || productId===undefined ||  productName===undefined || productFlavor===undefined || productPrice ===undefined
             ){
-            return res.status(500).send({
+            return logResponseDetails(req, res, {
+      status: 500,
+     
                 success:false,
                 message:"PLease Provide all fields"
             })
@@ -100,11 +114,14 @@ const add2Cart = async(req, res) => {
         const replacements = [productId, productName,productFlavor,productPrice];
 
         // Execute the query
-        await addCachedAndQuery(cacheKey,query, query, replacements)
-        res.status(200).send({
+        results = await addCachedAndQuery(cacheKey,query, query, replacements);
+
+        return logResponseDetails(req, res, {
+      status: 200,
+     
 
             success: true,
-            message: "sent"
+            message: `cartList added`
         })
         
         }
@@ -112,8 +129,10 @@ const add2Cart = async(req, res) => {
 
 
     } catch (error) {
-        console.log(error)
-        res.status(404).send({
+        //console.log(error)
+        return logResponseDetails(req, res, {
+      status: 404,
+     
             success:false,
             message:"Error in create Student API ",
             error
@@ -124,13 +143,16 @@ const add2Cart = async(req, res) => {
 }
 
 const deleteCart= async(req, res) =>{
+    logRequestDetails(req, "deleteCart");
     try {
 
         const productId = req.params.id;
         console.log(formattedDate() + "ID Pricing to delte: " + productId);
 
         if(!productId){
-            return res.status(404).send({
+            return logResponseDetails(req, res, {
+      status: 404,
+     
                 success:false,
                 message:"PLease provide student Id => " + productId
             })
@@ -145,14 +167,18 @@ const deleteCart= async(req, res) =>{
 
                 const data = await removeCachedAndQuery(cacheKey, query, query)
 
-                res.status(200).send({
+                return logResponseDetails(req, res, {
+      status: 200,
+     
                     success:true,
                     message:"ID [" + productId +"] DELETED Successfully"
                 })
 
             } catch (error) {
                 console.log(error)
-                res.status(500).send({
+                return logResponseDetails(req, res, {
+      status: 500,
+     
                     success:false,
                     message:"Something happening while trying to delete",
                     error
@@ -163,7 +189,9 @@ const deleteCart= async(req, res) =>{
         
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
+     
             success:false,
             message: "Error in Deleting Student",
             error

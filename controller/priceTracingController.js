@@ -1,5 +1,7 @@
   import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+
 
  const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
@@ -14,14 +16,16 @@ const cacheKey = 'priceTracing'; // Key to store the list in Redis
 let keyExist = false;
 
 const removeEstimateById = async(req, res) =>{
-    
+    logRequestDetails(req, "removeEstimateById");
 
     try {
 
         
 
         if(!productId){
-            return res.status(404).send({
+         return logResponseDetails(req, res, {
+      status: 404,
+     
                 success:false,
                 message:"PLease provide student Id => " + productId
             })
@@ -36,7 +40,9 @@ const removeEstimateById = async(req, res) =>{
                     type: dbSequelize.QueryTypes.DELETE
                 }); 
 
-                res.status(200).send({
+                return logResponseDetails(req, res, {
+      status: 200,
+     
                     success:true,
                     message:"ID [" + productId +"] DELETED Successfully"
                 })
@@ -45,7 +51,9 @@ const removeEstimateById = async(req, res) =>{
 
             } catch (error) {
                 console.log(error)
-                res.status(500).send({
+                return logResponseDetails(req, res, {
+      status: 500,
+     
                     success:false,
                     message:"Something happening while trying to delete",
                     error
@@ -59,7 +67,9 @@ const removeEstimateById = async(req, res) =>{
         
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
+     
             success:false,
             message: "Error in Deleting Student",
             error
@@ -69,44 +79,48 @@ const removeEstimateById = async(req, res) =>{
 }
 
 const removePriceTracing = async(req, res) =>{
-    
+    logRequestDetails(req, "removePriceTracing")
     try {
 
         const productId = req.params.id;
 
         if(!productId){
-            return res.status(404).send({
+         return logResponseDetails(req, res, {
+      status: 404,
+     
                 success:false,
                 message:"PLease provide student Id => " + productId
             })
         }else{
 
 
-            try {
-				
+try {
+    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
+    const replacements = [cacheKey, productId];
 
-                const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
-                const replacements = [productId];
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
-                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+    if (result.affectedRows > 0) {
+        res.status(200).send({
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+        });
+    } else {
+        res.status(404).send({
+            success: false,
+            message: `ID [${productId}] not found in [${cacheKey}]`,
+        });
+    }
 
-                res.status(200).send({
-                    success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
-                })
-
-
-
-            } catch (error) {
-                console.log(error)
-                res.status(500).send({
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                })
-                
-            }    
+} catch (error) {
+    console.error(error);
+    res.status(500).send({
+        success: false,
+        message: "Error occurred while trying to delete.",
+        error,
+    });
+}
+  
         
 	 
 			
@@ -114,7 +128,9 @@ const removePriceTracing = async(req, res) =>{
         
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
+     
             success:false,
             message: "Error in Deleting Student",
             error
@@ -124,6 +140,9 @@ const removePriceTracing = async(req, res) =>{
 }
 
 const getPriceTracing = async(req, res) =>{
+
+    logRequestDetails(req, "getPriceTracing")
+
  /*   try {
            // If not in cache, query the database
             console.log('Cache miss: Querying database');
@@ -132,12 +151,16 @@ const getPriceTracing = async(req, res) =>{
 
 
             if (!data) { 
-                return res.status(404).send({
+                return return logResponseDetails(req, res, {
+      status: 404,
+     
                     success: false,
                     message: "Resource not found"
                 });
             } else if (data.length === 0) {
-                return res.status(200).send({
+                return return logResponseDetails(req, res, {
+      status: 200,
+     
                     success: true,
                     data: [],
                     message: "No data available"
@@ -155,7 +178,9 @@ const getPriceTracing = async(req, res) =>{
 
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
+     
             success:false,
             message:"Error in getting all",
             error
@@ -173,10 +198,18 @@ const getPriceTracing = async(req, res) =>{
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-    res.status(200).send(data);
+    return logResponseDetails(req, res, {
+        status: 200,
+        success: true,
+        data,
+        message: "Price tracing data fetched successfully"
+    });  
+
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
-    res.status(500).send({
+    return logResponseDetails(req, res, {
+      status: 500,
+     
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
@@ -186,6 +219,9 @@ const getPriceTracing = async(req, res) =>{
 
 // Adding to Pricing Table
 const addPriceTracing  = async(req, res) => {
+
+    logRequestDetails(req, "addPriceTracing")
+
     try {
 
         /*
@@ -207,7 +243,9 @@ const addPriceTracing  = async(req, res) => {
             || productId == undefined ||  accAmount== undefined ||  lastUpdated== undefined
         
         ){
-            return res.status(500).send({
+         return logResponseDetails(req, res, {
+      status: 500,
+     
                 success:false,
                 message:"PLease Provide all fields"
             })
@@ -230,7 +268,9 @@ const addPriceTracing  = async(req, res) => {
         }
     } catch (error) {
         console.log(error)
-        res.status(404).send({
+        return logResponseDetails(req, res, {
+      status: 404,
+     
             success:false,
             message:"Error in create Student API ",
             error
@@ -243,6 +283,7 @@ const addPriceTracing  = async(req, res) => {
 //deletins
 
 const deletePriceTracing = async (req, res) => {
+     logRequestDetails(req, "deletePriceTracing")
     const productId = req.params.id;
 
     console.log(`[deletePriceTracing] Requested deletion for productId: ${productId}`);
@@ -254,30 +295,40 @@ const deletePriceTracing = async (req, res) => {
         });
     }
 
-    try {
-        const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-        const pgQuery = `DELETE FROM ${cacheKey} WHERE productId = $1`;
-        const replacements = [productId];
+try {
+    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
+    const replacements = [cacheKey, productId];
 
-        await removeCachedAndQuery(cacheKey, mysqlQuery, pgQuery, replacements);
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
-        return res.status(200).json({
+    if (result.affectedRows > 0) {
+        res.status(200).send({
             success: true,
-            message: `Product ID [${productId}] deleted successfully.`
+            message: `ID [${productId}] deleted successfully`,
         });
-    } catch (error) {
-        console.error(`[deletePriceTracing] Error deleting productId ${productId}:`, error);
-        return res.status(500).json({
+    } else {
+        res.status(404).send({
             success: false,
-            message: "An error occurred while attempting to delete the price tracing record.",
-            error: error.message || error
+            message: `ID [${productId}] not found in [${cacheKey}]`,
         });
     }
+
+} catch (error) {
+    console.error(error);
+    res.status(500).send({
+        success: false,
+        message: "Error occurred while trying to delete.",
+        error,
+    });
+}
+
+
 };
 
 // UPdating 
 
 const updatePriceTracing = async(req, res) => {
+    logRequestDetails(req, "updatePriceTracing")
     //        const { productId, accAmount ,lastUpdated} = req.body;
 
     const { productId, accAmount ,lastUpdated} = req.body;
@@ -299,7 +350,9 @@ const updatePriceTracing = async(req, res) => {
             console.log("accAmount => " + accAmount);
             console.log("lastUpdated => " + lastUpdated);
 
-            return res.status(404).send({
+         return logResponseDetails(req, res, {
+      status: 404,
+     
                 success:false,
                 message:"Invalid IR Or provide id => "+ productId
             })
@@ -307,62 +360,53 @@ const updatePriceTracing = async(req, res) => {
         }else{
 
             try {
-    
-                // Construct the SQL UPDATE statement with replacements
-                const sql = `
-                UPDATE priceTracing 
-                SET 
-                accAmount = :accAmount, 
-                date = :lastUpdated
-                WHERE 
-                    productId = :productId `;
-            
-                // Execute the UPDATE statement with replacements , ,,
-                const data = await dbSequelize.query(sql, {
-                  replacements: {
-                    
-                    accAmount,
-                    lastUpdated, 
-                    productId
-                  },
-                  type: UPDATE
-                });
-    
-                if(!data){
-                        res.status(500).send({
-                        success:false,
-                        message:"Error in Updateing"
-                        
-                        })
+                // Prepare SQL queries for both MySQL and PostgreSQL
+                const mysqlQuery = `UPDATE ${cacheKey} SET accAmount = ?, date = ? WHERE productId = ?`;
+                const pgQuery = `UPDATE ${cacheKey} SET accAmount = $1, date = $2 WHERE productId = $3`;
+                const replacements = [accAmount, lastUpdated, productId];
 
-                        console.log()
-    
-                }else{
-                    const [data] = await dbSequelize.query('SELECT * FROM priceTracing')
-                    const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
+                const result = await updateCachedOrQuery(cacheKey, mysqlQuery, replacements);
 
-                    
-                    res.status(200).send({
-                        success:true,
-                        message:"Successfully UPdated"
-                    })
+                console.log('✅ priceTracing updated successfully:', result);
+
+                // Check if any rows were affected/updated
+                if (
+                    !result ||
+                    (typeof result.affectedRows === 'number' && result.affectedRows === 0) ||
+                    (typeof result.rowCount === 'number' && result.rowCount === 0)
+                ) {
+                    return logResponseDetails(req, res, {
+                        status: 404,
+                        success: false,
+                        message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
+                        result
+                    });
+                } else {
+                    return logResponseDetails(req, res, {
+                        status: 200,
+                        success: true,
+                        message: "✅ priceTracing updated successfully",
+                        result
+                    });
                 }
             } catch (error) {
-                console.log(error);
-                res.status(500).send({
-                    success:false,
-                    message:"Something wrong happened while updating the record \n _name" + _name + " _flavor" +_flavor + " _price" + _price + " _image_url" + _image_url, 
+                console.error('❌ Error updating priceTracing:', error);
+                return logResponseDetails(req, res, {
+                    status: 500,
+                    success: false,
+                    message: "Something went wrong while updating the record.",
                     error
-                })
-                console.log("Something wrong happened while updating the record \n _name" + _name + " _flavor" +_flavor + " _price" + _price + " _image_url" + _image_url, 
-            )
+                });
             }
+
         }
         
     } catch (error) {
         
                     
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
+     
             success:false,
             message:"Error in Update Student API", 
             error

@@ -1,8 +1,8 @@
  
 import { query } from "express";
-import { getData, keyExists, setDataWithNoExpiry,setDataWithExpiry } from "../config_redis/redis_config.js";
-import ControllerHandler from "../utils/ControllerHandler.js";
+ import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
 
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
@@ -16,6 +16,7 @@ const cacheKey = 'sodEodItems'; // Key to store the list in Redis
 
 
 const getSodEodList = async(req, res) =>{
+logRequestDetails(req, "getSodEodList");
   console.log(`${cacheKey} backend started...`);
 
   const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
@@ -37,7 +38,7 @@ const getSodEodList = async(req, res) =>{
 }
 
 const addSodEodList = async(req, res) => {
-
+logRequestDetails(req, "addSodEodList");
 
     const { productId, itemsTaken, itemsRemaining , lastUpdated, productName, availableItems, outOfStock} = req.body;
 
@@ -105,7 +106,7 @@ const addSodEodList = async(req, res) => {
 }
 
 const getSodEodItems = async(req, res) =>{
-
+logRequestDetails(req, "getSodEodItems");
     try {
 
 
@@ -132,7 +133,7 @@ const getSodEodItems = async(req, res) =>{
             // Cache the data in Redis (set it for 1 hour)
 //            await setData(cacheKey, objectsOnly, 3600); // Cache for 1 hour
             //await setDataWithNoExpiry(cacheKey, dbDataResult);
-            await setDataWithExpiry(cacheKey, dbDataResult);
+         //   await setDataWithExpiry(cacheKey, dbDataResult);
             // Send the filtered data to the client
              return res.status(200).send(dbDataResult);
             
@@ -152,7 +153,8 @@ const getSodEodItems = async(req, res) =>{
 }
 
 const removeSodEodById = async(req, res) =>{
-    
+
+    logRequestDetails(req, "removeSodEodById");
     try {
 
         const productId = req.params.id;
@@ -165,32 +167,34 @@ const removeSodEodById = async(req, res) =>{
         }else{
 
 
-            try {
-				
+try {
+    const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+    const replacements = [productId];
 
-                const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-                                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
-                                const replacements = [productId];
-                
-                                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
-                
-                res.status(200).send({
-                    success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
-                })
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, mysqlQuery, replacements);
+
+    if (result && (result.affectedRows > 0 || result.rowCount > 0)) {
+        res.status(200).send({
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+        });
+    } else {
+        res.status(404).send({
+            success: false,
+            message: `ID [${productId}] not found in [${cacheKey}]`,
+        });
+    }
+
+} catch (error) {
+    console.error(error);
+    res.status(500).send({
+        success: false,
+        message: "Error occurred while trying to delete.",
+        error,
+    });
+}
 
 
-
-            } catch (error) {
-                console.log(error)
-                res.status(500).send({
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                })
-                
-            }    
-        
 	 
 			
         }
@@ -206,7 +210,7 @@ const removeSodEodById = async(req, res) =>{
 
 }
 const deleteSodEodItems = async(req, res) =>{
-    
+    logRequestDetails(req, "deleteSodEodItems");
     try {
 
         const productId = req.params.id;
@@ -219,32 +223,33 @@ const deleteSodEodItems = async(req, res) =>{
             })
         }else{
 
+try {
+    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
+    const replacements = [cacheKey, productId];
 
-            try {
-				
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
-const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
-                const replacements = [productId];
+    if (result.affectedRows > 0) {
+        res.status(200).send({
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+        });
+    } else {
+        res.status(404).send({
+            success: false,
+            message: `ID [${productId}] not found in [${cacheKey}]`,
+        });
+    }
 
-                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
-
-                res.status(200).send({
-                    success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
-                })
-
-
-
-            } catch (error) {
-                console.log(error)
-                res.status(500).send({
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                })
-                
-            }    
+} catch (error) {
+    console.error(error);
+    res.status(500).send({
+        success: false,
+        message: "Error occurred while trying to delete.",
+        error,
+    });
+}
+ 
         
 	 
 			
@@ -262,7 +267,7 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
 }
 
 const updateSodEodItems = async(req, res) => {
-
+logRequestDetails(req, "updateSodEodItems");
     try {
         const { productId, itemsTaken, itemsRemaining , date, productName} = req.body;
 
@@ -286,49 +291,44 @@ const updateSodEodItems = async(req, res) => {
             })
 
         }else{
+            try {
+                // Construct the SQL UPDATE statement with replacements
+                const query = `UPDATE sodEodItems SET productName = ?, itemsTaken = ?, itemsRemaining = ?, lastUpdated = ? WHERE productId = ?`;
 
-                            // Construct the SQL UPDATE statement with replacements
-                            const sql = `
-                            UPDATE sodEodItems
-                            SET 
-                            productName = :productName, 
-                            itemsTaken = :itemsTaken, 
-                            itemsRemaining = :itemsRemaining, 
-                            lastUpdated = :date
-                            WHERE 
-                                productId = :productId `;
-                        
-                            // Execute the UPDATE statement with replacements , ,,
-                            const data = await dbSequelize.query(sql, {
-                              replacements: {
-                                
-                                productName,
-                                itemsTaken,
-                                itemsRemaining,
-                                date, 
-                                productId
-                              },
-                              type: UPDATE
-                            });
-            
-            
-            
-            if(!data){
-                res.status(404).send({
-                    success:false,
-                    message:"Error: CNNOT INSERT DATA TO CART DUE TO A ERROR",
+                const replacements = [
+                    productName,
+                    itemsTaken,
+                    itemsRemaining,
+                    date,
+                    productId
+                ];
 
-                })
-        }else{
-            const [data] = await dbSequelize.query('SELECT * FROM sodEodItems')
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-  //          await setData(cacheKey, objectsOnly, 3600); // Cache for 1 hour
+                console.log('Updating sodEodItems with replacements:', replacements);
+
+                const result = await updateCachedOrQuery(cacheKey, query, query, replacements);
+                console.log('✅ sodEodItems updated successfully:', result);
+            } catch (error) {
+                console.error('❌ Error updating sodEodItems:', error);
+            }  
             
-                res.status(201).send({
-                    success:true, 
-                    message:"Successfully Updated SoEod",
-                })
-        }
+            
+        // respond with result
+        // Check if result is valid and rows were affected
+        if (!result || (typeof result.affectedRows === 'number' && result.affectedRows === 0) || (typeof result.rowCount === 'number' && result.rowCount === 0)) {
+            return logResponseDetails(req, res, {
+            status: 404,
+            success: false,
+            message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
+            result
+            });
+        } else {
+            return logResponseDetails(req, res, {
+            status: 200,
+            success: true,
+            message: "✅ Available items updated successfully",
+            result
+            });
+        } 
         
         
         }
@@ -348,7 +348,7 @@ const updateSodEodItems = async(req, res) => {
 }
 
 const addSodEodItems = async(req, res) => {
-
+logRequestDetails(req, "addSodEodItems");
 
     const { productId, itemsTaken, itemsRemaining , lastUpdated, productName} = req.body;
 

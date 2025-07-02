@@ -12,49 +12,54 @@ const {
   removeCachedAndQuery
 } = ControllerHandler;
 
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+
+
 const removeAvailableItemsById = async(req, res) =>{
 
+logRequestDetails(req, "removeAvailableItemsById");
 
             const productId = req.params.id;
     console.log("Attempting to remove available id[" + productId + "]")
     try {
 
         if(!productId){
-            return res.status(404).send({
-                success:false,
-                message:"PLease provide student Id => " + productId
-            })
+
+        return logResponseDetails(req, res, {
+        status: 404,
+        success: true,
+        message: "PLease provide student Id => " + productId})
+
         }else{
 
 
-            try {
-				
+try {
+    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
+    const replacements = [cacheKey, productId];
 
-                
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
-                const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
-                const replacements = [productId];
+    if (result.affectedRows > 0) {
+        res.status(200).send({
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+        });
+    } else {
+        res.status(404).send({
+            success: false,
+            message: `ID [${productId}] not found in [${cacheKey}]`,
+        });
+    }
 
-                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
-
-
-                res.status(200).send({
-                    success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
-                })
-
-
-
-            } catch (error) {
-                console.log(error)
-                res.status(500).send({
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                })
-                
-            }    
+} catch (error) {
+    console.error(error);
+    res.status(500).send({
+        success: false,
+        message: "Error occurred while trying to delete.",
+        error,
+    });
+}
+  
         
 	 
 			
@@ -62,7 +67,8 @@ const removeAvailableItemsById = async(req, res) =>{
         
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res,  {
+        status: 500,
             success:false,
             message: "Error in Deleting Student",
             error
@@ -78,6 +84,8 @@ const removeAvailableItemsById = async(req, res) =>{
 }
 
 const getAvailableItems = async (req, res) => {
+    logRequestDetails(req, "getAvailableItems");
+
   console.log(`${cacheKey} backend started...`);
 
   const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
@@ -90,7 +98,8 @@ const getAvailableItems = async (req, res) => {
     res.status(200).send(data);
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
-    res.status(500).send({
+    return logResponseDetails(req, res,  {
+        status: 500,
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
@@ -99,6 +108,9 @@ const getAvailableItems = async (req, res) => {
 };
 
 const deleteAvailableItems = async(req, res) =>{
+        logRequestDetails(req, "deleteAvailableItems");
+
+
             const productId = req.params.id;
         console.log(formattedDate() + "ID Pricing to delte: " + productId);
 
@@ -106,7 +118,8 @@ const deleteAvailableItems = async(req, res) =>{
 
 
         if(!productId){
-            return res.status(404).send({
+              return logResponseDetails(req, res,  {
+        status: 404,
                 success:false,
                 message:"PLease provide student Id => " + lastUpdated
             })
@@ -122,7 +135,8 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
                 await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
 
 
-                res.status(200).send({
+                return logResponseDetails(req, res,  {
+        status: 200,
                     success:true,
                     message:"ID [" + productId +"] DELETED Successfully"
                 })
@@ -131,7 +145,8 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
 
             } catch (error) {
                 console.log(error)
-                res.status(500).send({
+                return logResponseDetails(req, res,  {
+        status: 500,
                     success:false,
                     message:"Something happening while trying to delete",
                     error
@@ -145,7 +160,8 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
         
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res,  {
+        status: 500,
             success:false,
             message: "Error in Deleting Student",
             error
@@ -155,6 +171,9 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
 }
 
 const updateAvailableItems = async(req, res) => {
+
+            logRequestDetails(req, "updateAvailableItems");
+
 
     try {
         const { productId,  itemsRemaining , lastUpdated} = req.body;
@@ -166,38 +185,57 @@ const updateAvailableItems = async(req, res) => {
 
         if(productId == null || productId == undefined || itemsRemaining==null 
             ||  itemsRemaining === undefined  || lastUpdated === null || lastUpdated === undefined ){
-            return res.status(500).send({
+              return logResponseDetails(req, res,  {
+        status: 500,
                 success:false,
                 message:"PLease Provide all fields"
             })
 
         }else{
 
-        // SQL INSERT statement
-        const query = `
-            UPDATE availableItems SET itemsRemaining =? ,lastUpdated=? WHERE productId =?
-        `;
+            // SQL UPDATE statement
+            const query = `UPDATE availableItems SET itemsRemaining =? ,lastUpdated=? WHERE productId =?`;
 
-        // Parameterized query with replacements
-        const replacements = [itemsRemaining, lastUpdated, productId];
+            // Parameterized query with replacements
+            const replacements = [itemsRemaining, lastUpdated, productId];
 
-           // Call reusable function
-        const result = await updateCachedOrQuery(cacheKey, query, query, replacements);
-        
-        // respond with result
-        return res.status(200).send({
-        success: true,
-        message: "✅ Available items updated successfully",
-        result
-        });
-        
+            let result;
+            try {
+                result = await updateCachedOrQuery(cacheKey, query, replacements);
+                console.log('✅ productItemPricing updated successfully:', result);
+            } catch (error) {
+                console.error('❌ Error updating productItemPricing:', error);
+                return logResponseDetails(req, res, {
+                    status: 500,
+                    success: false,
+                    message: "❌ Error while updating available items",
+                    error: error.message
+                });
+            }   // respond with result
+        // Check if result is valid and rows were affected
+        if (!result || (typeof result.affectedRows === 'number' && result.affectedRows === 0) || (typeof result.rowCount === 'number' && result.rowCount === 0)) {
+            return logResponseDetails(req, res, {
+            status: 404,
+            success: false,
+            message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
+            result
+            });
+        } else {
+            return logResponseDetails(req, res, {
+            status: 200,
+            success: true,
+            message: "✅ Available items updated successfully",
+            result
+            });
+        }   
     }
 
 
 
     } catch (error) {
         console.log(error)
-        return res.status(500).send({
+          return logResponseDetails(req, res,  {
+        status: 500,
         success: false,
         message: "❌ Error while updating available items",
         error: error.message
@@ -209,6 +247,9 @@ const updateAvailableItems = async(req, res) => {
 
 const addAvailableItems = async(req, res) => {
 
+
+    logRequestDetails(req, "addAvailableItems");
+
     try {
         const { productId,  itemsRemaining , lastUpdated} = req.body;
 
@@ -219,7 +260,8 @@ const addAvailableItems = async(req, res) => {
 
         if(productId == null || productId == undefined || itemsRemaining==null 
             ||  itemsRemaining === undefined  || lastUpdated === null || lastUpdated === undefined ){
-            return res.status(500).send({
+              return logResponseDetails(req, res,  {
+        status: 500,
                 success:false,
                 message:"PLease Provide all fields"
             })
@@ -244,10 +286,10 @@ const addAvailableItems = async(req, res) => {
 
     } catch (error) {
         console.log(error)
-        res.status(404).send({
+        return logResponseDetails(req, res,  {
+        status: 404,
             success:false,
-            message:"Error in create Student API ",
-            error
+            message:"Error in create Student API ", error
         })
         
     }

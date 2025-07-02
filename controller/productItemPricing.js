@@ -2,6 +2,8 @@
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+
 
 const {
   getCachedOrQuery,
@@ -13,6 +15,7 @@ const cacheKey = 'productItemPricing'; // Key to store the list in Redis
 
 
 const getProductItemPricingList = async(req, res) =>{
+    logRequestDetails(req, "getProductItemPricingList");
   console.log(`${cacheKey} backend started...`);
 
   const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
@@ -22,6 +25,7 @@ const getProductItemPricingList = async(req, res) =>{
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
+    logResponseDetails(req, res, data, "getProductItemPricingList");
     res.status(200).send(data);
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
@@ -36,7 +40,7 @@ const getProductItemPricingList = async(req, res) =>{
 
 // Adding to Pricing Table
 const addProductItemPricing = async(req, res) => {
-
+logRequestDetails(req, "addProductItemPricing");
     console.log("Now addProductItemPricing");
 
     try {
@@ -92,7 +96,7 @@ const addProductItemPricing = async(req, res) => {
 }
 
 const deleteProductItemPricing = async(req, res) =>{
-
+logRequestDetails(req, "deleteProductItemPricing");
     const productId  = req.params.id; // Extract student ID from the request URL
     console.log("removeEstimateById Request Params: ", req.params);
     console.log("removeEstimateById Product ID: ", productId);
@@ -111,29 +115,33 @@ const deleteProductItemPricing = async(req, res) =>{
         }else{
 
 
-            try {
-				
-const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
-                const replacements = [productId];
+try {
+    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
+    const replacements = [cacheKey, productId];
 
-                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
+    if (result.affectedRows > 0) {
+        res.status(200).send({
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+        });
+    } else {
+        res.status(404).send({
+            success: false,
+            message: `ID [${productId}] not found in [${cacheKey}]`,
+        });
+    }
 
-                res.status(200).send({
-                    success: true,
-                    message: "Successfully deleted " + replacements + " from " + cacheKey
-                });
-
-            } catch (error) {
-                console.log(error)
-                res.status(500).send({
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                })
-                
-            }    
+} catch (error) {
+    console.error(error);
+    res.status(500).send({
+        success: false,
+        message: "Error occurred while trying to delete.",
+        error,
+    });
+}
+  
         
 	 
 			
@@ -153,7 +161,7 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
 // UPdating 
 
 const updateProductItemPricing= async(req, res) => {
-
+logRequestDetails(req, "updateProductItemPricing");
 
     //const productId  = req.params.id; // Extract student ID from the request URL
 
@@ -200,44 +208,47 @@ const updateProductItemPricing= async(req, res) => {
                 /* Sql STatement to UPdate */
 
                 try {
-    
-                    // Construct the SQL UPDATE statement with replacements
-                    const sql = `
-                    UPDATE productItemPricing
-                    SET 
-                    productDescription = :productDescription, 
-                    itemGroup = :itemGroup, 
-                    itemsRemainder = :itemsRemainder, 
-                    costOfRemainder = :costOfRemainder,
-                    groupedQuantity = :groupedQuantity,
-                    groupedProfit = :groupedProfit,
-                    groupedCommission = :groupedCommission
-                    WHERE 
-                        productId = :productId `;
-                
-                    // Execute the UPDATE statement with replacements , ,,
-                    const data = await dbSequelize.query(sql, {
-                      replacements: {
-                        productId,
+                    // Construct the SQL UPDATE statement with positional parameters
+                    const query = `UPDATE productItemPricing SET productDescription = ?, itemGroup = ?, itemsRemainder = ?, costOfRemainder = ?, groupedQuantity = ?, groupedProfit = ?, groupedCommission = ? WHERE productId = ?`;
+
+                    const replacements = [
                         productDescription,
                         itemGroup,
                         itemsRemainder,
                         costOfRemainder,
                         groupedQuantity,
                         groupedProfit,
-                        groupedCommission
-                      },
-                      type: UPDATE
-                    });
-        
+                        groupedCommission,
+                        productId
+                    ];
 
+                    const result = await updateCachedOrQuery(cacheKey, query, replacements);
+
+
+                    
+        if (!result || (typeof result.affectedRows === 'number' && result.affectedRows === 0) || (typeof result.rowCount === 'number' && result.rowCount === 0)) {
+           
+            return logResponseDetails(req, res, {
+            status: 404,
+            success: false,
+            message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
+            result
+            });
+        } else {
+
+            return logResponseDetails(req, res, {
+            status: 200,
+            success: true,
+            message: "✅ Available items updated successfully",
+            result
+            });
+        } 
                 } catch (error) {
-                    console.log(error);
-                    res.status(500).send({
-                        success:false,
-                        message:"Something wrong happened while updating the record \n _name" + _name + " _flavor" +_flavor + " _price" + _price + " _image_url" + _image_url, 
-                        error
-                    })
+                     return logResponseDetails(req, res, {
+            status: 404,
+            success: false,
+            message: '❌ Error updating productItemPricing:', error,
+            });
                 }
 
             

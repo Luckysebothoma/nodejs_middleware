@@ -2,8 +2,8 @@ import { createClient } from 'redis';
 import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
-
-
+//          sec * min * Hrs
+const ttl = 60 * 60 * 24;
 // Create Redis client instance
 const redisClient = createClient({
   url: 'redis://redis-service:6379',
@@ -23,7 +23,7 @@ redisClient.connect()
 // -------- Redis Utility Functions --------
 
 // Set data with optional expiry (default: 3600s)
-const setData = async (key, value, expiry = 3600) => {
+const setData = async (key, value, expiry = ttl) => {
   try {
     const ttl = parseInt(expiry, 10);
     if (isNaN(ttl)) throw new Error(`Invalid expiry: ${expiry}`);
@@ -78,7 +78,7 @@ console.log(`🔎 Preparing to set Redis key "${key}" with value type:`, typeof 
 }
 
 
-async function setDataWithExpiry(key, value, expirySeconds = 300) {
+async function setDataWithExpiry(key, value, expirySeconds = ttl) {
   const timestamp = new Date().toISOString();
   const prefix = 'temp:';
   const fullKey = `${prefix}${key}`;
@@ -377,6 +377,8 @@ const removeFromSet = async (setKey, member) => {
   }
 };
 
+
+/*
 // Export
 export {
   redisClient,
@@ -411,3 +413,4 @@ export default {
   setRedisDataWithNoExpiry,
   updateDataWithNoExpiry_include_productId
 };
+*/

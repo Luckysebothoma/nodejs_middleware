@@ -3,6 +3,8 @@ import TimeUtils from '../utils/Time.js';
 
 import ControllerHandler from "../utils/ControllerHandler.js";
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+
 
 const {
   getCachedOrQuery,
@@ -15,44 +17,51 @@ const cacheKey = 'estimates'; // Key to store the list in Redis
 
 
 const removeEstimateById = async(req, res) =>{
+
+logRequestDetails(req, "removeEstimateById");
+
     
     try {
 
         const productId = req.params.id;
 
         if(!productId){
-            return res.status(404).send({
+         return logResponseDetails(req, res, {
+      status: 404,
+     
                 success:false,
                 message:"PLease provide student Id => " + productId
             })
         }else{
 
 
-            try {
-				
+try {
+    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
+    const replacements = [cacheKey, productId];
 
-              const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-                                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
-                                const replacements = [productId];
-                
-                                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
-                
-                res.status(200).send({
-                    success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
-                })
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
+    if (result.affectedRows > 0) {
+        res.status(200).send({
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+        });
+    } else {
+        res.status(404).send({
+            success: false,
+            message: `ID [${productId}] not found in [${cacheKey}]`,
+        });
+    }
 
-
-            } catch (error) {
-                console.log(error)
-                res.status(500).send({
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                })
-                
-            }    
+} catch (error) {
+    console.error(error);
+    res.status(500).send({
+        success: false,
+        message: "Error occurred while trying to delete.",
+        error,
+    });
+}
+ 
         
 	 
 			
@@ -60,7 +69,9 @@ const removeEstimateById = async(req, res) =>{
         
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
+     
             success:false,
             message: "Error in Deleting Student",
             error
@@ -72,7 +83,7 @@ const removeEstimateById = async(req, res) =>{
 
 const getEstimates = async(req, res) =>{
 
-
+logRequestDetails(req, "getEstimates");
   console.log( formattedDate() + ` ${cacheKey} backend started...`);
 
   const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
@@ -85,7 +96,9 @@ const getEstimates = async(req, res) =>{
     res.status(200).send(data);
   } catch (error) {
     console.error(formattedDate() + `getCachedOrQuery error for ${cacheKey}:`, error);
-    res.status(500).send({
+    return logResponseDetails(req, res, {
+      status: 500,
+     
       success: false,
       message: `${formattedDate()} Error fetching ${cacheKey}`,
       error: error.message || error,
@@ -96,6 +109,9 @@ const getEstimates = async(req, res) =>{
 
 // Adding to Pricing Table
 const addEstimates = async(req, res) => {
+
+logRequestDetails(req, "addEstimates");
+
     try {
 
         /*
@@ -119,7 +135,9 @@ const addEstimates = async(req, res) => {
             actualSelling === undefined || actualSelling === null ||
             lastUpdated === undefined || lastUpdated === null) {
 
-            return res.status(500).send({
+         return logResponseDetails(req, res, {
+      status: 500,
+     
                 success:false,
                 message:"PLease Provide all fields"
             })
@@ -142,7 +160,9 @@ const addEstimates = async(req, res) => {
         }
     } catch (error) {
         console.log(error)
-        res.status(404).send({
+        return logResponseDetails(req, res, {
+      status: 404,
+     
             success:false,
             message:"Error in create Student API ",
             error
@@ -154,6 +174,7 @@ const addEstimates = async(req, res) => {
 
 //deletins
 const deleteEstimates = async(req, res) =>{
+logRequestDetails(req, "deleteEstimates");
 
     const productId  = req.params.id; // Extract student ID from the request URL
         console.log(formattedDate() + "ID Pricing to delte: " + productId);
@@ -164,7 +185,9 @@ const deleteEstimates = async(req, res) =>{
         console.log(productId);
 
         if(!productId){
-            return res.status(404).send({
+             return logResponseDetails(req, res, {
+      status: 404,
+     
                 success:false,
                 message:"PLease provide student Id => " + productId
             })
@@ -178,9 +201,11 @@ const deleteEstimates = async(req, res) =>{
                                 const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
                                 const replacements = [productId];
                 
-                                await removeCachedAndQuery(cacheKey,mysqlQuery, pgQuery, replacements);
+                                await removeCachedAndQuery(cacheKey,mysqlQuery, replacements);
                 
-                res.status(200).send({
+                return logResponseDetails(req, res, {
+      status: 200,
+     
                     success:true,
                     message:"ID [" + productId +"] DELETED Successfully"
                 })
@@ -189,7 +214,9 @@ const deleteEstimates = async(req, res) =>{
 
             } catch (error) {
                 console.log(error)
-                res.status(500).send({
+                return logResponseDetails(req, res, {
+      status: 500,
+     
                     success:false,
                     message:"Something happening while trying to delete",
                     error
@@ -203,7 +230,9 @@ const deleteEstimates = async(req, res) =>{
         
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
+     
             success:false,
             message: "Error in Deleting Student",
             error
@@ -214,6 +243,7 @@ const deleteEstimates = async(req, res) =>{
 
 // UPdating 
 const updateEstimates= async(req, res) => {
+    logRequestDetails(req, "updateEstimates");
     const { productId, estimatedSelling,actualSelling,lastUpdated} = req.body;
 
     console.log("id =>" +productId);
@@ -235,7 +265,9 @@ const updateEstimates= async(req, res) => {
             console.log("actualSelling  => " + actualSelling);
             console.log("lastUpdated => " + lastUpdated);
 
-            return res.status(404).send({
+         return logResponseDetails(req, res, {
+      status: 404,
+     
                 success:false,
                 message:"Invalid IR Or provide id => "+ productId
             })
@@ -243,45 +275,41 @@ const updateEstimates= async(req, res) => {
         }else{
 
             try {
-    
-                // Construct the SQL UPDATE statement with replacements
-                const sql = `
-                UPDATE estimates
-                SET 
-                estimatedSelling = :estimatedSelling, 
-                actualSelling = :actualSelling, 
-                lastUpdated = :lastUpdated
-                WHERE 
-                    productId = :productId `;
-            
-                // Execute the UPDATE statement with replacements , ,,
-                const data = await dbSequelize.query(sql, {
-                  replacements: {
-                    
-                    estimatedSelling,
-                    actualSelling,
-                    lastUpdated, 
-                    productId
-                  },
-                  type: UPDATE
-                });
-    
-                if(!data){
-                        res.status(500).send({
-                        success:false,
-                        message:"Error in Updateing", 
-                        error: "Error in Updateing "
-                        })
-    
-                }else{
-                    res.status(200).send({
-                        success:true,
-                        message:"Successfully UPdated"
-                    })
-                }
+    // Construct the SQL UPDATE statement for both MySQL and PostgreSQL
+    const mysqlQuery = `UPDATE estimates SET estimatedSelling = ?, actualSelling = ?, lastUpdated = ? WHERE productId = ?`;
+    const pgQuery = `UPDATE estimates SET estimatedSelling = $1, actualSelling = $2, lastUpdated = $3 WHERE productId = $4`;
+    const replacements = [estimatedSelling, actualSelling, lastUpdated, productId];
+
+    let result;
+    try {
+        result = await updateCachedOrQuery(cacheKey, mysqlQuery, pgQuery, replacements);
+        console.log('✅ productItemPricing updated successfully:', result);
+    } catch (error) {
+        console.error('❌ Error updating productItemPricing:', error);
+        throw error;
+    }
+        // respond with result
+        // Check if result is valid and rows were affected
+        if (!result || (typeof result.affectedRows === 'number' && result.affectedRows === 0) || (typeof result.rowCount === 'number' && result.rowCount === 0)) {
+            return logResponseDetails(req, res, {
+            status: 404,
+            success: false,
+            message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
+            result
+            });
+        } else {
+            return logResponseDetails(req, res, {
+            status: 200,
+            success: true,
+            message: "✅ Available items updated successfully",
+            result
+            });
+        } 
             } catch (error) {
                 console.log(error);
-                res.status(500).send({
+                return logResponseDetails(req, res, {
+      status: 500,
+     
                     success:false,
                     message:"Something wrong happened while updating the record \n _name" + _name + " _flavor" +_flavor + " _price" + _price + " _image_url" + _image_url, 
                     error
@@ -292,7 +320,9 @@ const updateEstimates= async(req, res) => {
     } catch (error) {
         
                     
-        res.status(500).send({
+        return logResponseDetails(req, res, {
+      status: 500,
+     
             success:false,
             message:"Error in Update Student API", 
             error

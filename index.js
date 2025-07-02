@@ -16,22 +16,13 @@ import { auth } from "express-oauth2-jwt-bearer";
 import path from 'path';
 import { fileURLToPath } from 'url';
 // Only use default import and destructuring
-import redisConfig from "./config_redis/redis_config.js";
+ 
+
+import { logRequestDetails, logResponseDetails } from './utils/requestLogger.js';
 
 
-import { logRequestDetails } from './utils/requestLogger.js';
 
-
-
-const {
-  getData,
-  keyExists,
-  setDataWithNoExpiry,
-  setDataWithExpiry,
-  removeData,
-  setData
-} = redisConfig;
-
+ 
 
 import ControllerHandler from "./utils/ControllerHandler.js"
 const {
@@ -49,7 +40,7 @@ const cacheKey = 'sodEodItems'; // Key to store the list in Redis
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-
+/*
 import {
   Registry,
   collectDefaultMetrics,
@@ -60,8 +51,11 @@ import {
 } from "prom-client";
 
 
-// Time utils
+ 
+
+*/
 import TimeUtils from "./utils/Time.js";
+
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
 // Load env vars
@@ -100,28 +94,9 @@ app.use(cors({
 }));
 
 // Prometheus metrics
-const register = new Registry();
-collectDefaultMetrics({ register });
+//const register = new Registry();
+//collectDefaultMetrics({ register });
 
-const httpDuration = new Histogram({
-  name: "http_request_duration_seconds",
-  help: "HTTP request durations",
-  labelNames: ["method", "route", "status_code"],
-  buckets: [0.05, 0.1, 0.5, 1, 2, 5]
-});
-const redisStatus = new Gauge({
-  name: "redis_connection_status",
-  help: "Redis connection status"
-});
-const componentErrors = new Counter({
-  name: "component_errors_total",
-  help: "Component error count",
-  labelNames: ["component", "error_type"]
-});
-
-register.registerMetric(httpDuration);
-register.registerMetric(redisStatus);
-register.registerMetric(componentErrors);
 
 
 export const requestLoggerMiddleware = (req, res, next) => {
@@ -180,6 +155,12 @@ app.post('/update-product', async (req, res) => {
 
 
 
+app.use("*", (req, res, next) => {
+  logRequestDetails(req, `Accessed path: ${req.originalUrl}`);
+  console.log("Headers:", req.headers);
+  next();
+});
+
 // POST /images/temp - Upload image to Redis only
 app.post('/images/temp-key', async (req, res) => {
 
@@ -204,9 +185,10 @@ app.post('/images/temp-key', async (req, res) => {
     };
 
     // Set with TTL (e.g., 10 minutes)
-    await setData(key, JSON.stringify(imageData));
-    return key;
+  //  await setData(key, JSON.stringify(imageData));
+  //  return key;
     
+  res.status(200).json({ success: true });
   } catch (err) {
     console.error('Redis upload error:', err);
     res.status(500).json({ message: 'Server error' });
@@ -221,13 +203,22 @@ app.get("/", (req, res) => {
  
 });
 
-app.get("/metrics", async (req, res) => {
 
  
-  //console.log(`${getShortTime(new Date())} ${req.path} endpoint hit`)
-  res.set("Content-Type", register.contentType);
-  res.end(await register.metrics());
- 
+
+app.get('/metrics', async (req, res) => {
+  try {
+    logRequestDetails(req, "metrics");
+
+    res.set('Content-Type', register.contentType);
+    const metrics = await register.metrics();
+    logResponseDetails(req, res, { status: 200, data: metrics });
+    res.end(metrics);
+
+  } catch (err) {
+    logResponseDetails(req, res, { status: 500, error: err.message });
+    res.status(500).end(err.message);
+  }
 });
 
 // Upload logic
@@ -253,7 +244,8 @@ app.post("/images/temp", upload.single("file"), async (req, res) => {
   };
 
   try {
-    await set(key, JSON.stringify(imageData));
+    //await set(key, JSON.stringify(imageData));
+   
     res.status(200).json({ message: "Image stored in Redis", key });
   } catch (err) {
     res.status(500).json({ error: "Redis error" });
@@ -313,7 +305,7 @@ app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
       return res.status(400).json({ error: '❌ Redis key missing in formData.' });
     }
 
-    console.log(`${timestamp} - 🖼️ Image Received:`, {
+    console.log(`${getLongTime(new Date)} - 🖼️ Image Received:`, {
       originalname: file.originalname,
       mimetype: file.mimetype,
       size: file.size,
@@ -324,8 +316,8 @@ app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
     const base64 = base64FromBody || buffer.toString('base64');
 
     // ✅ Store in Redis
-    await setDataWithExpiry(redisKey, base64);
-    console.log(`${timestamp} - ✅ Image stored in Redis under key: ${redisKey}`);
+    //await setDataWithExpiry(redisKey, base64);
+    console.log(`${getLongTime(new Date)} - ✅ Image stored in Redis under key: ${redisKey}`);
 
     res.status(200).json({ message: '✅ Image stored in Redis', key: redisKey });
   } catch (err) {
@@ -382,20 +374,20 @@ app.post('/images/temp', upload_temp.single('file'), async (req, res) => {
     const { productId, productName, tag } = req.body;
 
     if (!file) {
-      console.warn(`[${timestamp}] ❌ No file uploaded`);
+      console.warn(`[${getLongTime(new Date)}] ❌ No file uploaded`);
       return res.status(400).json({ error: 'No file uploaded.' });
     }
 
     // ✅ Validation
     const allowedTypes = ['image/jpeg', 'image/png'];
     if (!allowedTypes.includes(file.mimetype)) {
-      console.warn(`[${timestamp}] ❌ Invalid MIME type: ${file.mimetype}`);
+      console.warn(`[${getLongTime(new Date)}] ❌ Invalid MIME type: ${file.mimetype}`);
       fs.unlinkSync(file.path);
       return res.status(400).json({ error: 'Only JPEG/PNG files are allowed.' });
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      console.warn(`[${timestamp}] ❌ File too large: ${file.size}`);
+      console.warn(`[${getLongTime(new Date)}] ❌ File too large: ${file.size}`);
       fs.unlinkSync(file.path);
       return res.status(400).json({ error: 'File size exceeds 5MB limit.' });
     }
@@ -406,7 +398,7 @@ app.post('/images/temp', upload_temp.single('file'), async (req, res) => {
     const finalPath = path.join(tempDir, newFileName);
 
     fs.renameSync(file.path, finalPath);
-    console.log(`[${timestamp}] ✅ Temp file stored as: ${finalPath}`);
+    console.log(`[${getLongTime(new Date)}] ✅ Temp file stored as: ${finalPath}`);
 
     return res.status(200).json({
       message: '✅ Temp image uploaded',
@@ -436,7 +428,7 @@ app.get('/api/images/:key', async (req, res) => {
 
   const { key } = req.params;
   const redisKey = `temp:${key}`;
-  const imageData = await redisClient.getBuffer(redisKey); // Redis must store binary as buffer
+  //const imageData = await redisClient.getBuffer(redisKey); // Redis must store binary as buffer
 
   if (!imageData) return res.status(404).send('Image not found');
 
@@ -450,7 +442,7 @@ app.get("/images/temp", async (req, res) => {
   const key = req.query.key;
   if (!key) return res.status(400).json({ error: "Missing key" });
 
-  const data = await get(key);
+  //const data = await get(key);
   if (!data) return res.status(404).json({ error: "Not found" });
 
   const parsed = JSON.parse(data);
@@ -479,12 +471,12 @@ app.post('/upload', upload.array('files'), async (req, res) => {
       const buffer = fs.readFileSync(file.path);
       const base64Data = buffer.toString('base64');
 
-      const redisKey = `image:${Date.now()}:${file.originalname}`;
-      await redis.set(redisKey, base64Data);
-      await redis.zadd('uploadedFilesSorted', Date.now(), redisKey);
+      //const redisKey = `image:${Date.now()}:${file.originalname}`;
+      //await redis.set(redisKey, base64Data);
+      //await redis.zadd('uploadedFilesSorted', Date.now(), redisKey);
 
       fs.unlinkSync(file.path);
-      uploadedKeys.push(redisKey);
+     // uploadedKeys.push(redisKey);
     }
 
     res.status(200).json({ message: 'Images uploaded', keys: uploadedKeys });

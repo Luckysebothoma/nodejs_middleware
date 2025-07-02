@@ -4,6 +4,7 @@ import ControllerHandler from "../utils/ControllerHandler.js";
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 import fs from 'fs'
 import path from 'path'
+import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
 
 
 
@@ -14,8 +15,7 @@ const {
   removeCachedAndQuery
 } = ControllerHandler;
 
-import { setData, getData } from "../config_redis/redis_config.js"
-
+ 
 const cacheKey = "productImages";
 
 // Configure Multer to store files in memory
@@ -28,6 +28,7 @@ const uploadMiddleware = upload.array('images');
 
 // The uploadImages function now works with multiple files
 const uploadImages = async (req, res) => {
+    logRequestDetails(req, "uploadImages");
     const files = req.files; // This assumes you've used upload.array()
 
     if (!files || files.length === 0) {
