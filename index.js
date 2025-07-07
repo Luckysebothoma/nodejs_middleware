@@ -66,8 +66,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // TLS Certs
 const credentials = {
-  key: readFileSync("/certs/key.key", "utf8"),
-  cert: readFileSync("/certs/cert.crt", "utf8")
+  key: readFileSync("/certs/privkey.pem", "utf8"),
+  cert: readFileSync("/certs/cert.pem", "utf8")
 };
 
 // Middleware
@@ -287,6 +287,39 @@ import updateRouter from "./routes/updateProductRoutemySql_Redis.js";
 */
 
 
+
+app.post('/frontend-metrics', (req, res) => {
+  const { metricName, value, type = 'gauge', labels = {} } = req.body;
+  console.log(`📊 Metric Received → ${metricName} = ${value} [${type}]`, labels);
+  // Store to DB, forward to Prometheus, etc.
+  res.status(200).send({ status: 'Metric received' });
+});
+
+app.post('/frontend-console', (req, res) => {
+  const { log, metricName, value, type = 'gauge', labels } = req.body;
+
+  if (log) {
+    console.log(`🪵 Console Log: ${log}`);
+    return res.status(200).send({ status: 'Console log received' });
+  }
+
+  if (metricName) {
+    console.log(`📊 Console Metric → ${metricName} = ${value} [${type}]`, labels);
+    return res.status(200).send({ status: 'Console metric received' });
+  }
+
+  res.status(400).send({ error: 'Invalid console payload' });
+});
+
+app.post('/frontend-error', (req, res) => {
+  const { componentName, value } = req.body;
+  if (!componentName || !value) {
+    return res.status(400).send({ error: 'Missing error info' });
+  }
+  console.error(`🔥 Frontend Error from ${componentName}: ${value}`);
+  // Store in DB or log file
+  res.status(200).send({ status: 'Error logged' });
+});
 
 app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
  

@@ -3,14 +3,6 @@ import { publishToQueue } from '../utils/rabbitMQPublisher.js';  // Assumes you 
 import { matchEndpointLabel } from './endpointLogMap.js';
 import {buildTelegrafPayload} from "../data_transformer/telegraf_json.js"
 
- 
-
-import {
-  httpRequestCount,
-  httpRequestDuration,
-  httpResponseCount,
-}  from '../monitoring/metrics.js'
- 
 export const logRequestDetails = async (req, manualLabel = '', mode = 'both') => {
   const startHrTime = process.hrtime();
   const timestamp = new Date().toISOString();
@@ -43,7 +35,7 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
 
   if (mode === 'short' || mode === 'both') {
     console.log(`📝 ${dynamicLabel} @ ${isoTimestamp}`);
-    console.table(shortLog);
+   // console.table(shortLog);
   }
 
   const [sec, nano] = process.hrtime(startHrTime);
@@ -70,6 +62,8 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
     await publishToQueue(`logs.request.${req.hostname}`, fullLog);
   }
 
+
+  /*
   // ✅ Prometheus metrics
   try {
     httpRequestCount.labels(req.method, req.path, dynamicLabel).inc();
@@ -77,6 +71,8 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
   } catch (err) {
     console.warn('⚠️ Prometheus metric logging failed:', err.message);
   }
+
+  */
 };
 
 
@@ -135,7 +131,7 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
   });
 
   if (mode === 'short' || mode === 'both') {
-    console.log(`✅ [${status}] ${dynamicLabel} @ ${isoTimestamp}`);
+    //console.log(`✅ [${status}] ${dynamicLabel} @ ${isoTimestamp}`);
     console.table({
       method: req.method,
       path: req.path,
@@ -159,12 +155,5 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
     });
   }
 
-  // ✅ Prometheus metrics
-  try {
-    httpRequestCount.labels(req.method, req.path, dynamicLabel).inc();
-    httpRequestDuration.labels(req.method, req.path, dynamicLabel).observe(durationSeconds);
-    httpResponseCount.labels(req.method, req.path, status.toString()).inc();
-  } catch (err) {
-    console.warn('⚠️ Prometheus metric logging failed:', err.message);
-  }
+
 };

@@ -1,0 +1,87 @@
+networks:
+  sweety-sweet-network-bridge:
+    driver: bridge
+    external: true
+    internal: false
+  sweety-sweet-tunnel:
+    driver: bridge
+    external: true
+    internal: false
+  node-exporter:
+    driver: bridge
+    external: true
+    internal: false
+  queue-network:
+    driver: bridge
+    external: true
+    internal: false
+  
+volumes:
+  certs:
+    external: true
+
+services: 
+  api:
+    container_name: sweety-api-container
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+#      - certs:/certs/cert.crt
+      - certs:/certs
+    env_file:
+      - .env
+    environment:
+      - PGUSER= ${Postgres_User}
+      - PGHOST= ${Postgres_HOST}
+      - PGDATABASE= ${Postgres_DATABASE}
+      - PGPASSWORD= ${Postgres_PASSWORD}
+      - PGPORT= ${Postgres_PORT}
+      - MYSQL_ROOT_PASSWORD= ${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE= ${MYSQL_DATABASE}
+      - MYSQL_USER= ${MYSQL_USER}
+      - MYSQL_PASSWORD= ${MYSQL_PASSWORD}
+      - MYSQL_HOST= ${MYSQL_HOST}
+      - MYSQL_PORT= ${MYSQL_PORT}
+      - TZ=Africa/Johannesburg
+    ports:
+      - 8083:443
+      - 8093:80
+    restart: unless-stopped
+    networks:
+      - sweety-sweet-network-bridge
+      - node-exporter
+      - queue-network
+
+
+  redis-api:
+    container_name: sweety-api-redis-container
+    build:
+      context: ./sweety-app-redis
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./sweety-app-redis:/app
+      - /certs/crt.pem:/certs/cert.crt
+      - /certs/key.pem:/certs/key.key
+    env_file:
+      - .env
+    environment:
+      - PGUSER= ${Postgres_User}
+      - PGHOST= ${Postgres_HOST}
+      - PGDATABASE= ${Postgres_DATABASE}
+      - PGPASSWORD= ${Postgres_PASSWORD}
+      - PGPORT= ${Postgres_PORT}
+      - MYSQL_ROOT_PASSWORD= ${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE= ${MYSQL_DATABASE}
+      - MYSQL_USER= ${MYSQL_USER}
+      - MYSQL_PASSWORD= ${MYSQL_PASSWORD}
+      - MYSQL_HOST= ${MYSQL_HOST}
+      - MYSQL_PORT= ${MYSQL_PORT}
+      - TZ=Africa/Johannesburg
+    ports:
+      - 8090:3000
+    restart: unless-stopped
+    networks:
+      - sweety-sweet-network-bridge
+      - node-exporter

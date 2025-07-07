@@ -57,7 +57,7 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, values = [], connection)
     });
     const [result] = await connection.query(mysqlInsertQuery, values);
 
-    console.log(`${getLongTime()}✅ INSERT successful:`, result);
+    console.log(`${getLongTime()}✅ INSERT successful:`);
     return result;
   } catch (err) {
     console.error(`${getLongTime()}❌ INSERT failed for key [${key}]:`, err.message);
