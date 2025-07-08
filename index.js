@@ -212,12 +212,12 @@ app.get('/metrics', async (req, res) => {
 
     res.set('Content-Type', register.contentType);
     const metrics = await register.metrics();
-    logResponseDetails(req, res, { status: 200, data: metrics });
+    //logResponseDetails(req, res, { status: 200, data: metrics });
     res.end(metrics);
 
   } catch (err) {
-    logResponseDetails(req, res, { status: 500, error: err.message });
-    res.status(500).end(err.message);
+    //logResponseDetails(req, res, { status: 500, error: err.message });
+    //res.status(500).end(err.message);
   }
 });
 

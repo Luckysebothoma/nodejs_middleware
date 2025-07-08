@@ -144,10 +144,14 @@ logRequestDetails(req, "addEstimates");
 
         }else{
 
-        // SQL INSERT statement
+        // SQL INSERT statement with ON DUPLICATE KEY UPDATE for MySQL
         const query = `
-            INSERT INTO estimates (productId, estimatedSelling,actualSelling,lastUpdated)
+            INSERT INTO estimates (productId, estimatedSelling, actualSelling, lastUpdated)
             VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                estimatedSelling = VALUES(estimatedSelling),
+                actualSelling = VALUES(actualSelling),
+                lastUpdated = VALUES(lastUpdated)
         `;
 
         // Parameterized query with replacements

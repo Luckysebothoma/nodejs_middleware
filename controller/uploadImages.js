@@ -16,7 +16,7 @@ const {
 } = ControllerHandler;
 
  
-const cacheKey = "productImages";
+const cacheKey = "images";
 
 // Configure Multer to store files in memory
 const storage = memoryStorage();
@@ -27,44 +27,71 @@ const upload = multer({ storage });
 const uploadMiddleware = upload.array('images');
 
 // The uploadImages function now works with multiple files
-const uploadImages = async (req, res) => {
-    logRequestDetails(req, "uploadImages");
-    const files = req.files; // This assumes you've used upload.array()
+import { pgClient } from '../config/postgres.js'; // Make sure this points to your pgClient setup
+ 
+export const uploadImages = async (req, res) => {
+  logRequestDetails(req, "uploadImages");
 
-    if (!files || files.length === 0) {
-        return res.status(400).send({ message: 'No files uploaded' });
+  const files = req.files;
+  const cacheKey = req.body.table || 'images'; // Default to "images" table
+
+  if (!Array.isArray(files) || files.length === 0) {
+    return res.status(400).json({ message: 'No files uploaded' });
+  }
+
+  // Sanitize table name to avoid SQL injection
+  const tableName = cacheKey.replace(/[^a-zA-Z0-9_]/g, '');
+
+  const uploadedResults = [];
+
+  try {
+    for (const file of files) {
+      const { originalname, mimetype, size, buffer } = file;
+
+      if (!originalname || !buffer || !mimetype) {
+        console.warn('Skipping invalid file:', file);
+        continue;
+      }
+
+      console.log(`Uploading image: ${originalname}`);
+
+      const query = `
+        INSERT INTO ${tableName} (filename, mimetype, size, image_data, created_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (filename) DO UPDATE SET
+          mimetype = EXCLUDED.mimetype,
+          size = EXCLUDED.size,
+          image_data = EXCLUDED.image_data,
+          created_at = NOW()
+      `;
+
+      const values = [originalname, mimetype, size, buffer];
+
+      await pgClient.query(query, values);
+
+      uploadedResults.push({
+        filename: originalname,
+        size,
+        mimetype,
+        status: 'uploaded'
+      });
+
+      console.log(`✅ Uploaded: ${originalname}`);
     }
 
-    try {
-        // Loop through each file and insert into the database
-        for (const file of files) {
-            const imageBuffer = file.buffer; // Image in binary format
-            const imageName = file.originalname; // Image file name
+    return res.status(200).json({
+      message: 'Images uploaded successfully',
+      uploaded: uploadedResults
+    });
 
-            console.log(`Now uploading image: ${imageName}`);
-
-            // Use Sequelize's query to insert data into MySQL
-            const query = 'INSERT INTO productImages (image_url, image_content) VALUES (?, ?)';
-            
-            const replacements = [imageName, imageBuffer]
-            await addCachedAndQuery(cacheKey,query,query,replacements)
-            res.status(200).send({ message: `Image ${imageName} uploaded successfully` });
-           
-
-            console.log(`Image ${imageName} uploaded successfully.`);
-        }
-
-        // Fetch and cache the updated data
-        const [data] = await dbSequelize.query('SELECT * FROM productImages');
-        const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-        await setData(cacheKey, objectsOnly, 3600); // Cache for 1 hour
-
-        return res.status(200).send({ message: 'productImages uploaded successfully' });
-
-    } catch (error) {
-        console.error('Error uploading productImages:', error);
-        return res.status(500).send({ message: 'Failed to upload productImages', error: error.message });
-    }
+  } catch (error) {
+    console.error('❌ Error uploading images:', error);
+    return res.status(500).json({
+      message: 'Image upload failed',
+      error: error.message
+    });
+  }
 };
+
 
 export default { uploadMiddleware, uploadImages };

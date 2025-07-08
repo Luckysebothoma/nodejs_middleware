@@ -401,10 +401,15 @@ logRequestDetails(req, "addProduct");
 
         }else{
 
-        // SQL INSERT statement
+        // SQL INSERT statement with ON DUPLICATE KEY UPDATE
         const query = `
-            INSERT INTO productList (productId, productName,productFlavor,productPrice, image_url)
-            VALUES (?, ?, ?, ?, ?)
+          INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url)
+          VALUES (?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE 
+            productName = VALUES(productName),
+            productFlavor = VALUES(productFlavor),
+            productPrice = VALUES(productPrice),
+            image_url = VALUES(image_url)
         `;
 
         // Parameterized query with replacements

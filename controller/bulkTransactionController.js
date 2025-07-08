@@ -27,6 +27,50 @@ const stockItemsKey = "stockItems"
 const stockedItemsKey = "stockedItems"
 
 
+// uploadHandler.js
+import multer from 'multer';
+import path from 'path';
+import { pgClient } from '../config/postgres.js';
+
+// File storage config
+const storage = multer.diskStorage({
+  destination: './uploads',
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + '_' + file.originalname);
+  }
+});
+export const upload = multer({ storage });
+
+// Reusable function
+export async function handleFileUpload(req, res) {
+  try {
+    const productId = req.body.product_id;
+    const files = req.files;
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({ message: 'No files uploaded.' });
+    }
+
+    const client = await pgClient.connect();
+
+    for (let file of files) {
+      const imageUrl = `/uploads/${file.filename}`;
+
+      // Assume there's a column 'image_url' and a table 'products'
+      await client.query(
+        'UPDATE products SET image_url = $1 WHERE id = $2',
+        [imageUrl, productId]
+      );
+    }
+
+    client.release();
+
+    res.status(200).json({ message: 'Upload successful.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Upload failed.' });
+  }
+}
 
 
 
@@ -359,10 +403,33 @@ return logResponseDetails(req, res, {
 
 const addNewCandy_with_image = async(req,res) => {
 
-   logRequestDetails(req, "addNewCandy_with_image");
 
-  console.log("addNewCandy_with_image Started")
-  const { addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing, file } = req.body;
+      logRequestDetails(req, "addNewCandy_with_image");
+    console.log(req,"addNewCandy_with_image Started");
+
+    // JSON fields sent as string, so parse them
+const {
+  addProductListRequest,
+  addProductPricingRequest,
+  addAvailableItemsRequest,
+  addPriceTracing
+} = req.body;
+
+const file = req.file; // multer adds the file here
+
+console.log(`Image: ${JSON.stringify(file)}
+  ProductLIst ${JSON.stringify(addProductListRequest)}
+ Pprincing ${JSON.stringify(addProductPricingRequest)}
+  A Items ${JSON.stringify(addAvailableItemsRequest)}
+  Add Price Tracimg ${JSON.stringify(addPriceTracing)}
+  `)
+    
+
+  
+   //logRequestDetails(req, "addNewCandy_with_image");
+
+  //console.log("addNewCandy_with_image Started")
+//  const { addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing, file } = req.body;
 
   // You can now use these variables as needed
   // Example: pass them to your function
@@ -372,21 +439,27 @@ const addNewCandy_with_image = async(req,res) => {
   //Create mysql insert statement
   // Example: Insert uploaded image metadata into a table called 'product_images'
   // Assuming 'file' contains: { filename, mimetype, size }
-  const imageInsertQuery = `
-    INSERT INTO images (filename, mimetype, size, created_at)
-    VALUES (?, ?, ?, NOW())
-  `;
-  const imageReplacements = [
-    file.filename,
-    file.mimetype,
-    file.size
-  ];
+const imageInsertQuery = `
+  INSERT INTO images (filename, mimetype, size, created_at)
+  VALUES ($1, $2, $3, NOW())
+  ON CONFLICT (filename) DO UPDATE SET
+    mimetype = EXCLUDED.mimetype,
+    size = EXCLUDED.size,
+    created_at = NOW()
+`;
 
-  addCachedAndQuery("images", imageInsertQuery,imageReplacements);
+const imageReplacements = [
+  file.filename,
+  file.mimetype,
+  file.size
+];
 
+
+  const responses = await addCachedAndQuery("images", imageInsertQuery,imageReplacements);
+console.log("Response after adding products ", responses)
 
   //await mysqlPool.query(imageInsertQuery, imageReplacements);
-  
+ 
 }
 const addNewCandy = async(req, res) =>{
 
@@ -415,6 +488,7 @@ const productResult = await addProductRecord(addProductListRequest, connection);
 const yummyResult = await addYummyRecord(addProductPricingRequest, connection);
 const available_itemsResult = await addAvailableItems(addAvailableItemsRequest, connection)
 const price_tracing_Result = await addPriceTrace(addPriceTracing, connection);
+
 // Example of logging each part
 console.log(productResult + ' \n Add Product Request:', addProductListRequest);
 
@@ -513,7 +587,7 @@ async function addNewCandy_function(addProductListRequest, addProductPricingRequ
 
 // Process each part as needed
 
-res.json({ message: 'Data received successfully' });
+//res.json({ message: 'Data received successfully' });
 
 // await mysqlPool.beginTransaction(); // Start the transaction
 
@@ -582,11 +656,21 @@ const newProducFlavor = addProductListRequest.productFlavor;
 const newProductPrice = addProductListRequest.productPrice;
 const newProductImageURL =  addProductListRequest.image_url;
 const key = "productList"
-  const query = `INSERT INTO productList (productId, productName,productFlavor,productPrice, image_url) VALUES (?, ?, ?, ?, ?)`;
-const pgInsertQuery = `
-  INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url)
-  VALUES ($1, $2, $3, $4, $5)
-`;
+  const query = `INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url) VALUES (?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE 
+      productName = VALUES(productName),
+      productFlavor = VALUES(productFlavor),
+      productPrice = VALUES(productPrice),
+      image_url = VALUES(image_url)`;
+  const pgInsertQuery = `
+    INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (productId) DO UPDATE SET
+      productName = EXCLUDED.productName,
+      productFlavor = EXCLUDED.productFlavor,
+      productPrice = EXCLUDED.productPrice,
+      image_url = EXCLUDED.image_url
+  `;
 
 const replacements = [addProductListRequest.productId, addProductListRequest.productName,addProductListRequest.productFlavor,addProductListRequest.productPrice, addProductListRequest.image_url];
 
@@ -619,7 +703,15 @@ async function addYummyRecord(addProductPricingRequest, mySqlConnection) {
 
   console.log("addYummyRecord \n "+ addProductPricingRequest);
   const key = "productPricing";
-  const query = `INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+  const query = `INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      costPerItem = VALUES(costPerItem),
+      sellingPrice = VALUES(sellingPrice),
+      productCommission = VALUES(productCommission),
+      productProfit = VALUES(productProfit),
+      productQuantity = VALUES(productQuantity),
+      productSize = VALUES(productSize)`;
   const pgInsertQuery = `
     INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize)
     VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -652,7 +744,10 @@ try {
 async function addAvailableItems(addAvailableItemsRequest, mySqlConnection) {
   console.log("addAvailableItems called..!")
   const key = "availableItems";
-  const query = `INSERT INTO availableItems (productId, itemsRemaining, lastUpdated) VALUES (?, ?, ?)`;
+  const query = `INSERT INTO availableItems (productId, itemsRemaining, lastUpdated) VALUES (?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      itemsRemaining = VALUES(itemsRemaining),
+      lastUpdated = VALUES(lastUpdated)`;
   const pgInsertQuery = `
     INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
     VALUES ($1, $2, $3)
@@ -681,7 +776,10 @@ try {
 async function addPriceTrace(addPriceTracing, mySqlConnection) {
 
   const key = "priceTracing";
-  const query = `INSERT INTO priceTracing (productId, accAmount, date) VALUES (?, ?, ?)`;
+  const query = `INSERT INTO priceTracing (productId, accAmount, date) VALUES (?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      accAmount = VALUES(accAmount),
+      date = VALUES(date)`;
   const pgInsertQuery = `
     INSERT INTO priceTracing (productId, accAmount, date)
     VALUES ($1, $2, $3)

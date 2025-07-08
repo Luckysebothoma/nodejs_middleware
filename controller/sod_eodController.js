@@ -76,12 +76,18 @@ logRequestDetails(req, "addSodEodList");
     }else{
 
         try {
-            // SQL INSERT statement
+            // SQL INSERT statement with ON DUPLICATE KEY UPDATE
             const query = `
-            INSERT INTO sodEodItems (productName, itemsTaken,itemsRemaining, lastUpdated,productId, availableItems, outOfStock)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `;
-     
+                INSERT INTO sodEodItems (productName, itemsTaken, itemsRemaining, lastUpdated, productId, availableItems, outOfStock)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    productName = VALUES(productName),
+                    itemsTaken = VALUES(itemsTaken),
+                    itemsRemaining = VALUES(itemsRemaining),
+                    lastUpdated = VALUES(lastUpdated),
+                    availableItems = VALUES(availableItems),
+                    outOfStock = VALUES(outOfStock)
+            `;  
         // Parameterized query with replacements
         const replacements = [productName, itemsTaken,itemsRemaining, lastUpdated,productId, availableItems, outOfStock];
      
@@ -379,13 +385,16 @@ logRequestDetails(req, "addSodEodItems");
 
         try {
 
-        
-            // SQL INSERT statement
-            const query = `
-            INSERT INTO sodEodItems (productName, itemsTaken,itemsRemaining, lastUpdated,productId )
-            VALUES (?, ?, ?, ?, ?)
-        `;
-     
+        // SQL INSERT statement with ON DUPLICATE KEY UPDATE
+        const query = `
+        INSERT INTO sodEodItems (productName, itemsTaken, itemsRemaining, lastUpdated, productId)
+        VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            productName = VALUES(productName),
+            itemsTaken = VALUES(itemsTaken),
+            itemsRemaining = VALUES(itemsRemaining),
+            lastUpdated = VALUES(lastUpdated)
+    `;  
         // Parameterized query with replacements
         const replacements = [productName, itemsTaken,itemsRemaining, lastUpdated,productId];
      

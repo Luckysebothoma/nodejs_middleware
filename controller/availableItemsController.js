@@ -270,11 +270,12 @@ const addAvailableItems = async(req, res) => {
 
         // SQL INSERT statement
         const query = `
-            INSERT INTO availableItems (productId, itemsRemaining,lastUpdated)
+            INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
             VALUES (?, ?, ?)
-        `;
-
-        // Parameterized query with replacements
+            ON DUPLICATE KEY UPDATE 
+                itemsRemaining = VALUES(itemsRemaining),
+                lastUpdated = VALUES(lastUpdated)
+        `;   // Parameterized query with replacements
         const replacements = [productId, itemsRemaining, lastUpdated];
 
         addCachedAndQuery("availableItems", query, query, replacements);

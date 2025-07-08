@@ -251,13 +251,14 @@ const addPriceTracing  = async(req, res) => {
             })
 
         }else{
-
-        // SQL INSERT statement
+            
         const query = `
-            INSERT INTO ${cacheKey} (productI,date, accAmount)
-            VALUES (?, ?, ?);
+            INSERT INTO ${cacheKey} (productId, date, accAmount)
+            VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+            accAmount = VALUES(accAmount),
+            date = VALUES(date);
         `;
-
         // Parameterized query with replacements
         const replacements = [productId,lastUpdated,accAmount];
 

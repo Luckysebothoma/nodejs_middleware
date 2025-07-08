@@ -123,8 +123,14 @@ const addStock = async(req, res) => {
 
         // SQL INSERT statement
         const query = `
-            INSERT INTO stockItems (productId, productName,productFlavor,productPrice, lastUpdated, productQuantity)
+            INSERT INTO stockItems (productId, productName, productFlavor, productPrice, lastUpdated, productQuantity)
             VALUES (?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+            productName = VALUES(productName),
+            productFlavor = VALUES(productFlavor),
+            productPrice = VALUES(productPrice),
+            lastUpdated = VALUES(lastUpdated),
+            productQuantity = VALUES(productQuantity)
         `;
 
         // Parameterized query with replacements
@@ -183,8 +189,13 @@ const addStockedItems = async(req, res) => {
 
         // SQL INSERT statement
         const query = `
-            INSERT INTO stockedItems (productId, stockDate,stockId,stockPrice, stockQuantity)
+            INSERT INTO stockedItems (productId, stockDate, stockId, stockPrice, stockQuantity)
             VALUES (?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+            stockDate = VALUES(stockDate),
+            stockId = VALUES(stockId),
+            stockPrice = VALUES(stockPrice),
+            stockQuantity = VALUES(stockQuantity)
         `;
 
         // Parameterized query with replacements

@@ -9,39 +9,67 @@ import {
   pgPort
 } from '../keys.js';
 
-// Create the PostgreSQL client pool
-export const pgClient = new Pool({
-  user: pgUser,
-  host: pgHost,
-  database: pgDatabase,
-  password: pgPassword,
-  port: pgPort,
-  idleTimeoutMillis: 30000,  // Optional: close idle clients after 30 seconds
-  connectionTimeoutMillis: 10000 // Optional: return an error after 10 seconds if connection could not be established
-});
+const poolConfig = {
+  user: pgUser.trim(),
+  host: pgHost.trim(),
+  database: pgDatabase.trim(),
+  password: pgPassword.trim(),
+  port: pgPort.trim(),
+  max: 10, // max connections in pool
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+};
 
-// Attempt to connect
-pgClient.connect()
-  .then(() => {
-    console.log(`[Postgres] Connected to database: ${pgDatabase} @ ${pgHost}:${pgPort}`);
-  })
-  .catch(err => {
-    console.error('[Postgres] Connection error:', err);
-  });
+export const pgClient = new Pool(poolConfig);
 
-// Reusable query function
-export const pgQuery = async (text, params) => {
+// Initial connection test
+const initPgConnection = async () => {
+  try {
+    const client = await pgClient.connect();
+    console.log(`[Postgres] ✅ Connected to DataBase: ${pgDatabase} @ ${pgHost}:${pgPort}`);
+    client.release();
+  } catch (err) {
+    console.error(`[Postgres] ❌ Initial connection failed:
+      username: ${pgUser}, password: ${pgPassword} dn name: ${pgDatabase}
+      Host ${pgHost} posrt ${pgPort}
+      \n`, err);
+    process.exit(1);
+  }
+};
+
+// Generic query executor with logging
+export const pgQuery = async (text, params = [], tag = '') => {
+  const label = tag ? `[${tag}]` : '';
   try {
     const res = await pgClient.query(text, params);
+    console.log(`[Postgres] ✅ Query Success ${label}: ${text}`);
     return res;
   } catch (err) {
-    console.error('[Postgres] Query error:', err.message, text);
+    console.error(`[Postgres] ❌ Query Error ${label}:`, err.message);
+    console.error(`SQL: ${text}`);
     throw err;
   }
 };
 
-// Close connection gracefully (optional for shutdown scripts)
-export const pgDisconnect = async () => {
-  await pgClient.end();
-  console.log('[Postgres] Disconnected.');
+// Check connection health (e.g. for monitoring or liveness probes)
+export const pgPing = async () => {
+  try {
+    await pgClient.query('SELECT 1');
+    return true;
+  } catch {
+    return false;
+  }
 };
+
+// Graceful disconnection (e.g. in SIGINT/SIGTERM handlers)
+export const pgDisconnect = async () => {
+  try {
+    await pgClient.end();
+    console.log('[Postgres] 🔌 Disconnected gracefully.');
+  } catch (err) {
+    console.error('[Postgres] ❌ Disconnect error:', err.message);
+  }
+};
+
+// Immediately test the connection
+await initPgConnection();

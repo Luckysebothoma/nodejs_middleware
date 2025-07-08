@@ -26,7 +26,7 @@ const getProductItemPricingList = async(req, res) =>{
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
     logResponseDetails(req, res, data, "getProductItemPricingList");
-    res.status(200).send(data);
+    //res.status(200).send(data);
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
     res.status(500).send({
@@ -69,10 +69,18 @@ logRequestDetails(req, "addProductItemPricing");
 
         }else{
 
-        // SQL INSERT statement
+        // SQL INSERT statement with ON DUPLICATE KEY UPDATE
         const query = `
-            INSERT INTO productItemPricing (productId, productDescription,itemGroup,itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission)
+            INSERT INTO productItemPricing (productId, productDescription, itemGroup, itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                productDescription = VALUES(productDescription),
+                itemGroup = VALUES(itemGroup),
+                itemsRemainder = VALUES(itemsRemainder),
+                costOfRemainder = VALUES(costOfRemainder),
+                groupedQuantity = VALUES(groupedQuantity),
+                groupedProfit = VALUES(groupedProfit),
+                groupedCommission = VALUES(groupedCommission)
         `;
 
         // Parameterized query with replacements

@@ -15,6 +15,11 @@ networks:
     driver: bridge
     external: true
     internal: false
+  database:
+    driver: bridge
+    external: true
+    internal: false
+  
   
 volumes:
   certs:
@@ -28,16 +33,15 @@ services:
       dockerfile: Dockerfile
     volumes:
       - .:/app
-#      - certs:/certs/cert.crt
-      - certs:/certs
+      - certs:/certs:ro
     env_file:
       - .env
     environment:
-      - PGUSER= ${Postgres_User}
-      - PGHOST= ${Postgres_HOST}
-      - PGDATABASE= ${Postgres_DATABASE}
-      - PGPASSWORD= ${Postgres_PASSWORD}
-      - PGPORT= ${Postgres_PORT}
+      - PGUSER= ${POSTGRES_USER}
+      - PGHOST= ${POSTGRES_HOST}
+      - PGDATABASE= ${POSTGRES_DATABASE}
+      - PGPASSWORD= ${POSTGRES_PASSWORD}
+      - PGPORT= ${POSTGRES_PORT}
       - MYSQL_ROOT_PASSWORD= ${MYSQL_ROOT_PASSWORD}
       - MYSQL_DATABASE= ${MYSQL_DATABASE}
       - MYSQL_USER= ${MYSQL_USER}
@@ -53,6 +57,7 @@ services:
       - sweety-sweet-network-bridge
       - node-exporter
       - queue-network
+      - database
 
 
   redis-api:
@@ -67,11 +72,11 @@ services:
     env_file:
       - .env
     environment:
-      - PGUSER= ${Postgres_User}
-      - PGHOST= ${Postgres_HOST}
-      - PGDATABASE= ${Postgres_DATABASE}
-      - PGPASSWORD= ${Postgres_PASSWORD}
-      - PGPORT= ${Postgres_PORT}
+      - PGUSER= ${POSTGRES_USER}
+      - PGHOST= ${POSTGRES_HOST}
+      - PGDATABASE= ${POSTGRES_DATABASE}
+      - PGPASSWORD= ${POSTGRES_PASSWORD}
+      - PGPORT= ${POSTGRES_PORT}
       - MYSQL_ROOT_PASSWORD= ${MYSQL_ROOT_PASSWORD}
       - MYSQL_DATABASE= ${MYSQL_DATABASE}
       - MYSQL_USER= ${MYSQL_USER}

@@ -120,10 +120,17 @@ const add2Pricing = async(req, res) => {
 
         }else{
 
-        // SQL INSERT statement
+        // SQL INSERT statement with ON DUPLICATE KEY UPDATE
         const query = `
-            INSERT INTO productPricing (productId, costPerItem,sellingPrice,productCommission, productProfit, productQuantity, productSize)
+            INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize)
             VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                costPerItem = VALUES(costPerItem),
+                sellingPrice = VALUES(sellingPrice),
+                productCommission = VALUES(productCommission),
+                productProfit = VALUES(productProfit),
+                productQuantity = VALUES(productQuantity),
+                productSize = VALUES(productSize)
         `;
 
         // Parameterized query with replacements

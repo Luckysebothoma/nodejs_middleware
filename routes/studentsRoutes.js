@@ -145,7 +145,7 @@ router.put('/updatePricingList', updatePricingList);
     // Add New Candy
 
 router.post('/addNewCandy', addNewCandy);
-router.post("addNewCandy_with_image", addNewCandy_with_image)
+router.post("/addNewCandy_with_image", addNewCandy_with_image)
 router.post('/updateProducts_Batch', updateProducts_Batch);
 
 
