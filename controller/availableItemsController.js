@@ -26,9 +26,9 @@ logRequestDetails(req, "removeAvailableItemsById");
         if(!productId){
 
         return logResponseDetails(req, res, {
-        status: 404,
+        status: 400,
         success: true,
-        message: "PLease provide student Id => " + productId})
+        message: "PLease provide student Id => " + productId},cacheKey,400)
 
         }else{
 
@@ -68,11 +68,11 @@ try {
     } catch (error) {
         console.log(error)
         return logResponseDetails(req, res,  {
-        status: 500,
+        status: 400,
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+        },cacheKey,400)
     }
 
 
@@ -95,15 +95,12 @@ const getAvailableItems = async (req, res) => {
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-    res.status(200).send(data);
+    logResponseDetails(req,res,data,cacheKey,200)
+    //res.status(200).send(data);
+
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
-    return logResponseDetails(req, res,  {
-        status: 500,
-      success: false,
-      message: `Error fetching ${cacheKey}`,
-      error: error.message || error,
-    });
+    return logResponseDetails(req, res,`Error in ${cacheKey}`,cacheKey,500)
   }
 };
 
@@ -122,7 +119,7 @@ const deleteAvailableItems = async(req, res) =>{
         status: 404,
                 success:false,
                 message:"PLease provide student Id => " + lastUpdated
-            })
+            },cacheKey,500)
         }else{
 
 
@@ -139,7 +136,7 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
         status: 200,
                     success:true,
                     message:"ID [" + productId +"] DELETED Successfully"
-                })
+                },cacheKey,500)
 
 
 
@@ -150,7 +147,7 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
                     success:false,
                     message:"Something happening while trying to delete",
                     error
-                })
+                },cacheKey,500)
                 
             }    
         
@@ -165,7 +162,7 @@ const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+        },cacheKey,500)
     }
 
 }
@@ -189,7 +186,7 @@ const updateAvailableItems = async(req, res) => {
         status: 500,
                 success:false,
                 message:"PLease Provide all fields"
-            })
+            },cacheKey,500)
 
         }else{
 
@@ -206,27 +203,27 @@ const updateAvailableItems = async(req, res) => {
             } catch (error) {
                 console.error('❌ Error updating productItemPricing:', error);
                 return logResponseDetails(req, res, {
-                    status: 500,
+                    status: 400,
                     success: false,
                     message: "❌ Error while updating available items",
                     error: error.message
-                });
+                },cacheKey,400);
             }   // respond with result
         // Check if result is valid and rows were affected
         if (!result || (typeof result.affectedRows === 'number' && result.affectedRows === 0) || (typeof result.rowCount === 'number' && result.rowCount === 0)) {
             return logResponseDetails(req, res, {
-            status: 404,
+            status: 400,
             success: false,
             message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
             result
-            });
+            },cacheKey,400);
         } else {
             return logResponseDetails(req, res, {
             status: 200,
             success: true,
             message: "✅ Available items updated successfully",
             result
-            });
+            },cacheKey,200);
         }   
     }
 
@@ -239,7 +236,7 @@ const updateAvailableItems = async(req, res) => {
         success: false,
         message: "❌ Error while updating available items",
         error: error.message
-        });
+        },cacheKey,500);
             
     }
 
@@ -261,10 +258,10 @@ const addAvailableItems = async(req, res) => {
         if(productId == null || productId == undefined || itemsRemaining==null 
             ||  itemsRemaining === undefined  || lastUpdated === null || lastUpdated === undefined ){
               return logResponseDetails(req, res,  {
-        status: 500,
+        status: 400,
                 success:false,
                 message:"PLease Provide all fields"
-            })
+            },cacheKey,400)
 
         }else{
 
@@ -291,7 +288,7 @@ const addAvailableItems = async(req, res) => {
         status: 404,
             success:false,
             message:"Error in create Student API ", error
-        })
+        },cacheKey,400)
         
     }
 

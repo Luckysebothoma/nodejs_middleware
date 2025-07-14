@@ -33,7 +33,7 @@ logRequestDetails(req, "getSodEodList");
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
-    });
+   }, cacheKey,500);
   }
 }
 
@@ -70,7 +70,7 @@ logRequestDetails(req, "addSodEodList");
             success:false,
             message:"Error in create addSodEodList API ",
             error: errorMessage
-        })
+       }, cacheKey,500)
         
 
     }else{
@@ -102,7 +102,7 @@ logRequestDetails(req, "addSodEodList");
                  success:false,
                  message:"Error in create Student API ",
                  error: errorMessage
-             })
+            }, cacheKey,500)
              
          }
      
@@ -126,13 +126,13 @@ logRequestDetails(req, "getSodEodItems");
             return res.status(404).send({
                 success: false,
                 message: "Resource not found"
-            });
+           }, cacheKey,500);
         } else if (!dbDataResult.length || dbDataResult.length === 0) {
-            return res.status(200).send({
+            return logResponseDetails(req,res,{
                 success: true,
                 data: [],
                 message: "No data available"
-            });
+           }, cacheKey,200);
         }else{
             
             //const objectsOnly = dbData.filter(item => typeof item === 'object' && !Array.isArray(item));
@@ -152,7 +152,7 @@ logRequestDetails(req, "getSodEodItems");
             success:false,
             message:"Error in getting all" + error,
             error
-        })
+       }, cacheKey,500)
     }
 
 
@@ -169,7 +169,7 @@ const removeSodEodById = async(req, res) =>{
             return res.status(404).send({
                 success:false,
                 message:"PLease provide student Id => " + productId
-            })
+           }, cacheKey,500)
         }else{
 
 
@@ -180,15 +180,15 @@ try {
     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, mysqlQuery, replacements);
 
     if (result && (result.affectedRows > 0 || result.rowCount > 0)) {
-        res.status(200).send({
+        logResponseDetails(req,res,{
             success: true,
             message: `ID [${productId}] deleted successfully`,
-        });
+       }, cacheKey,200);
     } else {
         res.status(404).send({
             success: false,
             message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
+       }, cacheKey,500);
     }
 
 } catch (error) {
@@ -197,7 +197,7 @@ try {
         success: false,
         message: "Error occurred while trying to delete.",
         error,
-    });
+   }, cacheKey,500);
 }
 
 
@@ -211,7 +211,7 @@ try {
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+       }, cacheKey,500)
     }
 
 }
@@ -226,7 +226,7 @@ const deleteSodEodItems = async(req, res) =>{
             return res.status(404).send({
                 success:false,
                 message:"PLease provide student Id => " + productId
-            })
+           }, cacheKey,500)
         }else{
 
 try {
@@ -236,15 +236,15 @@ try {
     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
     if (result.affectedRows > 0) {
-        res.status(200).send({
+        logResponseDetails(req,res,{
             success: true,
             message: `ID [${productId}] deleted successfully`,
-        });
+       }, cacheKey,200);
     } else {
         res.status(404).send({
             success: false,
             message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
+       }, cacheKey,500);
     }
 
 } catch (error) {
@@ -253,7 +253,7 @@ try {
         success: false,
         message: "Error occurred while trying to delete.",
         error,
-    });
+   }, cacheKey,500);
 }
  
         
@@ -267,7 +267,7 @@ try {
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+       }, cacheKey,500)
     }
 
 }
@@ -294,7 +294,7 @@ logRequestDetails(req, "updateSodEodItems");
             return res.status(500).send({
                 success:false,
                 message:"PLease Provide all fields"
-            })
+           }, cacheKey,500)
 
         }else{
             try {
@@ -326,14 +326,14 @@ logRequestDetails(req, "updateSodEodItems");
             success: false,
             message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
             result
-            });
+           }, cacheKey,500);
         } else {
             return logResponseDetails(req, res, {
             status: 200,
             success: true,
             message: "✅ Available items updated successfully",
             result
-            });
+           }, cacheKey,200);
         } 
         
         
@@ -347,7 +347,7 @@ logRequestDetails(req, "updateSodEodItems");
             success:false,
             message:"Error in create Student API ",
             error
-        })
+       }, cacheKey,500)
         
     }
 
@@ -378,7 +378,7 @@ logRequestDetails(req, "addSodEodItems");
             success:false,
             message:"Error in create Student API ",
             error: errorMessage
-        })
+       }, cacheKey,500)
         
 
     }else{
@@ -409,24 +409,23 @@ logRequestDetails(req, "addSodEodItems");
                     success:false,
                     message:"Error: CNNOT INSERT DATA TO CART DUE TO A ERROR",
      
-                })
+               }, cacheKey,500)
         }else{
-                res.status(200).send({
+                logResponseDetails(req,res,{
                     success:true, 
                     message:"Successfully Added New SodEod",
-                })
+               }, cacheKey,200)
         }
      
      
          } catch (error) {
-             console.log(error)
-             let errorMessage = error.message || 'Unknown MySQL error';
-             res.status(404).send({
-                 success:false,
+
+            logResponseDetails(req,res,{
+                error,
+                success:false,
                  message:"Error in create Student API ",
                  error: errorMessage
-             })
-             
+            },cacheKey,500)
          }
      
 

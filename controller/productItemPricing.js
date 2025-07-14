@@ -25,7 +25,7 @@ const getProductItemPricingList = async(req, res) =>{
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-    logResponseDetails(req, res, data, "getProductItemPricingList");
+    logResponseDetails(req, res, data, cacheKey,200);
     //res.status(200).send(data);
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
@@ -33,7 +33,7 @@ const getProductItemPricingList = async(req, res) =>{
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
-    });
+   }, cacheKey,500);
   }
 
 }
@@ -65,7 +65,7 @@ logRequestDetails(req, "addProductItemPricing");
             return res.status(500).send({
                 success:false,
                 message:"PLease Provide all fields"
-            })
+           }, cacheKey,500)
 
         }else{
 
@@ -97,7 +97,7 @@ logRequestDetails(req, "addProductItemPricing");
             success:false,
             message:"Error in create Student API ",
             error
-        })
+       }, cacheKey,500)
         
     }
 
@@ -119,7 +119,7 @@ logRequestDetails(req, "deleteProductItemPricing");
             return res.status(404).send({
                 success:false,
                 message:"PLease provide student Id => " + productId
-            })
+           }, cacheKey,500)
         }else{
 
 
@@ -133,12 +133,12 @@ try {
         res.status(200).send({
             success: true,
             message: `ID [${productId}] deleted successfully`,
-        });
+       }, cacheKey,200);
     } else {
         res.status(404).send({
             success: false,
             message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
+       }, cacheKey,500);
     }
 
 } catch (error) {
@@ -147,7 +147,7 @@ try {
         success: false,
         message: "Error occurred while trying to delete.",
         error,
-    });
+   }, cacheKey,500);
 }
   
         
@@ -161,7 +161,7 @@ try {
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+       }, cacheKey,500)
     }
 
 }
@@ -198,7 +198,7 @@ logRequestDetails(req, "updateProductItemPricing");
             return res.status(500).send({
                 success:false,
                 message:"PLease Provide all fields"
-            })
+           }, cacheKey,500)
 
             
         }else{
@@ -241,7 +241,7 @@ logRequestDetails(req, "updateProductItemPricing");
             success: false,
             message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
             result
-            });
+           }, cacheKey,500);
         } else {
 
             return logResponseDetails(req, res, {
@@ -249,14 +249,14 @@ logRequestDetails(req, "updateProductItemPricing");
             success: true,
             message: "✅ Available items updated successfully",
             result
-            });
+           }, cacheKey,500);
         } 
                 } catch (error) {
                      return logResponseDetails(req, res, {
             status: 404,
             success: false,
             message: '❌ Error updating productItemPricing:', error,
-            });
+           }, cacheKey,500);
                 }
 
             
@@ -266,7 +266,7 @@ logRequestDetails(req, "updateProductItemPricing");
             return res.status(200).send({
                 success:true,
                 message:"Successfully UPdated"
-            })
+           }, cacheKey,500)
             
         }
 

@@ -76,7 +76,7 @@ const getCartList = async(req, res) =>{
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
-    });
+    },cacheKey,500);
   }
 }
 

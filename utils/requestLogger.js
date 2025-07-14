@@ -2,14 +2,14 @@ import promClient from 'prom-client';
 import { publishToQueue } from '../utils/rabbitMQPublisher.js';  // Assumes you are publishing to RabbitMQ
 import { matchEndpointLabel } from './endpointLogMap.js';
 import {buildTelegrafPayload} from "../data_transformer/telegraf_json.js"
-
+ 
 export const logRequestDetails = async (req, manualLabel = '', mode = 'both') => {
   const startHrTime = process.hrtime();
   const timestamp = new Date().toISOString();
   const currentTimeStamp = new Date();
   const dynamicLabel = matchEndpointLabel(req.method, req.path) || manualLabel || '🗂️ Unknown Endpoint';
   const isoTimestamp = new Date(timestamp).toISOString();
-
+ 
   const shortLog = {
     time: isoTimestamp,
     label: dynamicLabel,
@@ -77,36 +77,52 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
 
 
 
- export const logResponseDetails = async (req, res, payload, manualLabel = '', mode = 'both') => {
+ export const logResponseDetails = async (req, res, payload, manualLabel = '', status=500 ,mode = 'both') => {
   const startHrTime = process.hrtime();
   const now = Date.now();
   const isoTimestamp = new Date(now).toISOString();
   const dynamicLabel = matchEndpointLabel(req.method, req.path) || manualLabel || '🗂️ Unknown Endpoint';
+  let Global_Success_Status = false
+  let Global_apiResponse = false
 
-  const status = payload.status || 200;
-  const success = typeof payload.success === 'boolean' ? payload.success : true;
-  const message = payload.message || '';
-  const data = payload.data || [];
-  const rest = { ...payload };
-  delete rest.status;
-  delete rest.success;
-  delete rest.message;
-  delete rest.data;
+   const message = "" || '';
+   console.log("payload to be sent", JSON.stringify(payload).length)
+  const data = payload || [];
 
-  const apiResponse = {
-    success,
-    message,
-    data,
-    ...rest,
-  };
+  
+  if(status === 200){
+     const apiResponseStatus = {
+    success:true,
+    message:message,
+    data: payload,
+   };
+   Global_apiResponse = apiResponseStatus
+   Global_Success_Status =true
+  res.status(status).send(apiResponseStatus);
+
+  }else{
+     const apiResponse = {
+    success:false,
+    message:message,
+    data:JSON.stringify(payload),
+   };
+   Global_Success_Status = false
+   Global_apiResponse = apiResponse
 
   res.status(status).send(apiResponse);
+
+  }
+ 
+
+
+
 
   const [sec, nano] = process.hrtime(startHrTime);
   const durationMs = +(sec * 1000 + nano / 1e6).toFixed(3);
   const durationSeconds = durationMs / 1000;
 
   const dataLength = Array.isArray(data) ? data.length : 0;
+  const payloadLength= payload.length;
   const totalProfit = Array.isArray(data)
     ? data.reduce((sum, item) => sum + (parseFloat(item.productProfit) || 0), 0)
     : 0;
@@ -120,10 +136,10 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
       status: status.toString(),
     },
     fields: {
-      success: success ? 1 : 0,
+      success: Global_Success_Status ? 1 : 0,
       message_length: message.length || 0,
-      response_size: Buffer.byteLength(JSON.stringify(apiResponse)),
-      data_length: dataLength,
+      response_size: Buffer.byteLength(JSON.stringify(Global_apiResponse)),
+      data_length: payloadLength,
       total_profit: +totalProfit.toFixed(2),
       duration_ms: durationMs,
     },
@@ -136,8 +152,8 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
       method: req.method,
       path: req.path,
       status,
-      items: dataLength,
-      profit: totalProfit.toFixed(2),
+      items: payloadLength,
+      payload: payload.length,
       durationMs,
     });
   }
@@ -150,7 +166,7 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
       path: req.path,
       label: dynamicLabel,
       status,
-      responseMeta: apiResponse,
+      responseMeta: Global_apiResponse,
       durationMs,
     });
   }

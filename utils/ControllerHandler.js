@@ -14,14 +14,16 @@ const getCachedOrQuery = async (key, mysqlQuery) => {
 
   try {
     console.log(`${getLongTime()}🔍 Executing SELECT for key [${key}]`);
-    const [result] = await connection.query(mysqlQuery);
+    const result = await connection.query(mysqlQuery);
     if (!result || !result.length) {
       console.warn(`${getLongTime()}⚠️ Empty result for key: [${key}]`);
       throw new Error(`No result found for key: ${key}`);
     }
 
     console.log(`${getLongTime()}✅ SELECT success: ${result.length} rows`);
-    return [result];
+    
+    return result;
+    
 
 
   } catch (err) {
@@ -55,7 +57,7 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, values = [], connection)
       mysqlInsertQuery,
       values
     });
-    const [result] = await connection.query(mysqlInsertQuery, values);
+    const result = await connection.query(mysqlInsertQuery, values);
 
     console.log(`${getLongTime()}✅ INSERT successful:`);
     return result;
@@ -83,7 +85,7 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, values = []) => {
  
     await connection.beginTransaction();
 
-    const [result] = await connection.query(mysqlUpdateQuery, values);
+    const result = await connection.query(mysqlUpdateQuery, values);
 
     if (result.affectedRows === 0) {
       console.warn(`${getLongTime()}⚠️ No rows updated for key: [${key}]`);
@@ -112,7 +114,7 @@ const removeCachedAndQuery = async (key, mysqlDeleteQury, value) => {
     //const query = `DELETE FROM ${tableName} WHERE ${whereField} = ?`;
 
     console.log(`${getLongTime()}🗑️ Deleting from [${key}] where ${value} = ${value}`);
-    const [result] = await connection.query(mysqlDeleteQury, value);
+    const result = await connection.query(mysqlDeleteQury, value);
     connection.commit()
 
     console.log(`${getLongTime()}✅ Delete result:`, result);
@@ -141,7 +143,7 @@ const insertWithIncrementRetry = async (
 
   while (retries < maxRetries) {
     try {
-      const [result] = await connection.query(mysqlInsertQuery, values);
+      const result = await connection.query(mysqlInsertQuery, values);
       console.log(`${getLongTime()}✅ Insert successful after ${retries} retries`);
       return result;
     } catch (err) {

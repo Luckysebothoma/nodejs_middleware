@@ -28,7 +28,7 @@ const removeEstimateById = async(req, res) =>{
      
                 success:false,
                 message:"PLease provide student Id => " + productId
-            })
+            }, cacheKey, 500)
         }else{
 
 
@@ -45,7 +45,7 @@ const removeEstimateById = async(req, res) =>{
      
                     success:true,
                     message:"ID [" + productId +"] DELETED Successfully"
-                })
+                }, cacheKey, 200)
 
 
 
@@ -57,7 +57,7 @@ const removeEstimateById = async(req, res) =>{
                     success:false,
                     message:"Something happening while trying to delete",
                     error
-                })
+                }, cacheKey, 500)
                 
             }    
         
@@ -73,7 +73,7 @@ const removeEstimateById = async(req, res) =>{
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+        }, cacheKey, 500)
     }
 
 }
@@ -90,7 +90,7 @@ const removePriceTracing = async(req, res) =>{
      
                 success:false,
                 message:"PLease provide student Id => " + productId
-            })
+            }, cacheKey, 500)
         }else{
 
 
@@ -134,7 +134,7 @@ try {
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+        }, cacheKey, 500)
     }
 
 }
@@ -198,12 +198,8 @@ const getPriceTracing = async(req, res) =>{
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-    return logResponseDetails(req, res, {
-        status: 200,
-        success: true,
-        data,
-        message: "Price tracing data fetched successfully"
-    });  
+    logResponseDetails(req, res, data, cacheKey,200);
+
 
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
@@ -213,7 +209,7 @@ const getPriceTracing = async(req, res) =>{
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
-    });
+    }, cacheKey, 500);
   }
 }
 
@@ -248,7 +244,7 @@ const addPriceTracing  = async(req, res) => {
      
                 success:false,
                 message:"PLease Provide all fields"
-            })
+            }, cacheKey, 500)
 
         }else{
             
@@ -275,7 +271,7 @@ const addPriceTracing  = async(req, res) => {
             success:false,
             message:"Error in create Student API ",
             error
-        })
+        }, cacheKey, 404)
 
     }
 
@@ -356,7 +352,7 @@ const updatePriceTracing = async(req, res) => {
      
                 success:false,
                 message:"Invalid IR Or provide id => "+ productId
-            })
+            }, cacheKey, 500)
 
         }else{
 
@@ -381,14 +377,14 @@ const updatePriceTracing = async(req, res) => {
                         success: false,
                         message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
                         result
-                    });
+                    }, cacheKey, 500);
                 } else {
                     return logResponseDetails(req, res, {
                         status: 200,
                         success: true,
                         message: "✅ priceTracing updated successfully",
                         result
-                    });
+                    }, cacheKey, 200);
                 }
             } catch (error) {
                 console.error('❌ Error updating priceTracing:', error);
@@ -397,7 +393,7 @@ const updatePriceTracing = async(req, res) => {
                     success: false,
                     message: "Something went wrong while updating the record.",
                     error
-                });
+                }, cacheKey, 500);
             }
 
         }
@@ -411,7 +407,7 @@ const updatePriceTracing = async(req, res) => {
             success:false,
             message:"Error in Update Student API", 
             error
-        })
+        }, cacheKey, 500)
     }
 }
 

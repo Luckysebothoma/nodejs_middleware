@@ -64,14 +64,15 @@ const getProductList = async (req, res) => {
 
   try {
 
-    const [data] = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
+    const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
     
-    return logResponseDetails(req, res, {
-        status: 200,
-        success: true,
-        data,
-        message: '🛒 Product list retrieved successfully',
-    });
+//    return logResponseDetails(req, res, {
+//        status: 200,
+//        success: true,
+//        data,
+//        message: '🛒 Product list retrieved successfully',
+//    });
+    logResponseDetails(req, res, data, cacheKey,200);
 
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
@@ -80,7 +81,7 @@ const getProductList = async (req, res) => {
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
-    });
+   }, cacheKey, 500);
   }
 
 };
@@ -95,7 +96,7 @@ const _getProductByID = async (productId) => {
       status: 400,
                 success: false,
                 message: "Invalid or missing product ID"
-            });
+           }, cacheKey, 500);
         } else {
             const query = 'SELECT * FROM productList WHERE productId = :productId'
                 const replacements= [productId]
@@ -151,7 +152,7 @@ const _getProductByID = async (productId) => {
             success: false,
             message: "Error in getProductByID function, Passed ID=" + productId,
             error
-        });
+       }, cacheKey, 500);
     }
 };
 
@@ -166,7 +167,7 @@ const getProductByID = async(req,res) => {
       status: 404,
                     success:false,
                     message:"INvalid or Provide Student ID"
-                })
+               }, cacheKey, 500)
         }else{
                 //const data = await dbSequelize.query('SELECT * FRO students WHERE id='+productId);
                 const data = await dbSequelize.query('SELECT * FROM productList WHERE id = :productId', {
@@ -179,14 +180,14 @@ const getProductByID = async(req,res) => {
       status: 404,
                         success:false,
                         message:"NO Recotdas found"
-                    })
+                   }, cacheKey, 500)
 
                 }else{
                     return logResponseDetails(req, res, {
       status: 200,
                         success:true, 
                         studentDetails:data
-                    })
+                   }, cacheKey, 200)
                 }
         }
 
@@ -197,7 +198,7 @@ const getProductByID = async(req,res) => {
             success:false,
             message: "Error in Get Students by ID API, Passed ID=0"+ productId,
             error
-        })
+       }, cacheKey, 500)
     }
 
 }
@@ -213,7 +214,7 @@ const updateProduct = async (req, res) => {
       status: 400,
       success: false,
       message: `❌ Invalid input: ${JSON.stringify(req.body)}`
-    });
+   }, cacheKey, 500);
   }
 
   // Use positional parameters (?)
@@ -236,7 +237,7 @@ const updateProduct = async (req, res) => {
         success: false,
         message: `❌ No rows updated in ${cacheKey}. Invalid productId or no changes.`,
         result
-      });
+     }, cacheKey, 500);
     }
 
     return logResponseDetails(req, res, {
@@ -244,7 +245,7 @@ const updateProduct = async (req, res) => {
       success: true,
       message: `✅ ${cacheKey} updated successfully`,
       result
-    });
+   }, cacheKey, 200);
 
   } catch (error) {
     console.error(`❌ Update error for ${cacheKey}:`, error);
@@ -253,7 +254,7 @@ const updateProduct = async (req, res) => {
       success: false,
       message: `❌ Failed to update ${cacheKey}`,
       error: error.message
-    });
+   }, cacheKey, 500);
   }
 };
 
@@ -273,7 +274,7 @@ const purgingProduct = async (req, res) => {
       status: 404,
                 success: false,
                 message: "Please provide a product ID"
-            });
+           }, cacheKey, 500);
         }
 
         const deletePromises = [
@@ -295,14 +296,14 @@ const purgingProduct = async (req, res) => {
       status: 404,
                 success: false,
                 message: "No product found with the provided ID"
-            });
+           }, cacheKey, 500);
         }
 
      return logResponseDetails(req, res, {
       status: 200,
             success: true,
             message: "Product with ID " + productId + " deleted successfully from both tables"
-        });
+       }, cacheKey,200);
     } catch (error) {
         console.log(error);
      return logResponseDetails(req, res, {
@@ -310,7 +311,7 @@ const purgingProduct = async (req, res) => {
             success: false,
             message: "Error in deleting product",
             error: error.message // Send error message only
-        });
+       }, cacheKey,500);
     }
 };
 
@@ -326,7 +327,7 @@ const deleteProduct = async(req, res) =>{
       status: 404,
                 success:false,
                 message:"PLease provide student Id => " + productId
-            })
+           }, cacheKey,500)
         }else{
 
 
@@ -337,24 +338,24 @@ try {
     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
     if (result.affectedRows > 0) {
-        res.status(200).send({
+        logResponseDetails(req,res,{
             success: true,
             message: `ID [${productId}] deleted successfully`,
-        });
+       }, cacheKey,200);
     } else {
-        res.status(404).send({
+       logResponseDetails(req,res,{
             success: false,
             message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
+       }, cacheKey,500);
     }
 
 } catch (error) {
     console.error(error);
-    res.status(500).send({
+    logResponseDetails(req,res,{
         success: false,
         message: "Error occurred while trying to delete.",
         error,
-    });
+   }, cacheKey,500);
 }
    
         
@@ -369,7 +370,7 @@ try {
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+       }, cacheKey,500)
     }
 
 }
@@ -397,7 +398,7 @@ logRequestDetails(req, "addProduct");
       status: 500,
                 success:false,
                 message:"PLease Provide all fields"
-            })
+           }, cacheKey,500)
 
         }else{
 
@@ -424,13 +425,12 @@ logRequestDetails(req, "addProduct");
 
 
     } catch (error) {
-        console.log(error)
-        return logResponseDetails(req, res, {
+         return logResponseDetails(req, res, {
       status: 404,
             success:false,
             message:"Error in create Student API ",
             error
-        })
+       }, cacheKey,500)
         
     }
 

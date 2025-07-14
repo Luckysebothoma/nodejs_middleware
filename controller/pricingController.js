@@ -72,11 +72,8 @@ const getPricingList = async(req, res) =>{
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-    return logResponseDetails(req, res, {
-        status: 200,
-        success: true,
-        data,
-    });
+    logResponseDetails(req, res, data, cacheKey,200);
+
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
     return logResponseDetails(req, res, {
@@ -85,7 +82,7 @@ const getPricingList = async(req, res) =>{
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
-    });
+    }, cacheKey, 500);
   }
 
 
@@ -116,7 +113,7 @@ const add2Pricing = async(req, res) => {
      
                 success:false,
                 message:"PLease Provide all fields"
-            })
+            }, cacheKey, 500)
 
         }else{
 
@@ -149,7 +146,7 @@ const add2Pricing = async(req, res) => {
             success:false,
             message:"Error in create Student API ",
             error
-        })
+        }, cacheKey, 500)
         
     }
 
@@ -233,7 +230,7 @@ try {
      
         success: true,
         data,
-    });
+    }, cacheKey, 200);
 } catch (error) {
     console.error(`getCachedOrQuery error for ${yummyCacheKey}:`, error);
     return logResponseDetails(req, res, {
@@ -242,7 +239,7 @@ try {
         success: false,
         message: `Error fetching ${yummyCacheKey}`,
         error: error.message || error,
-    });
+    }, cacheKey, 500);
 }
 
 }
@@ -265,7 +262,7 @@ const deletePricing = async(req, res) =>{
      
                 success:false,
                 message:"PLease provide student Id => " + productId
-            })
+            }, cacheKey, 500)
         }else{
 
 
@@ -279,12 +276,12 @@ try {
         res.status(200).send({
             success: true,
             message: `ID [${productId}] deleted successfully`,
-        });
+       }, cacheKey, 200);
     } else {
         res.status(404).send({
             success: false,
             message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
+       }, cacheKey, 500);
     }
 
 } catch (error) {
@@ -293,7 +290,7 @@ try {
         success: false,
         message: "Error occurred while trying to delete.",
         error,
-    });
+   }, cacheKey, 500);
 }
  
         
@@ -309,7 +306,7 @@ try {
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+        }, cacheKey, 500)
     }
 
 }
@@ -364,7 +361,7 @@ export interface ProductPricing{
      
                 success:false,
                 message:"PLease Provide all fields"
-            })
+           }, cacheKey, 500)
 
             
         }else{
@@ -414,14 +411,14 @@ export interface ProductPricing{
             success: false,
             message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
             result
-            });
+           }, cacheKey, 500);
         } else {
             return logResponseDetails(req, res, {
             status: 200,
             success: true,
             message: "✅ Available items updated successfully",
             result
-            });
+           }, cacheKey, 200);
         } 
 
                 } catch (error) {
@@ -432,7 +429,7 @@ export interface ProductPricing{
                         success:false,
                         message:"Something wrong happened while updating the record \n _name" + _name + " _flavor" +_flavor + " _price" + _price + " _image_url" + _image_url, 
                         error
-                    })
+                   }, cacheKey, 500)
                 }
 
             
@@ -529,14 +526,14 @@ const updatePricingList= async(req, res) => {
                         success: false,
                         message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
                         result
-                    });
+                   }, cacheKey, 500);
                 } else {
                     return logResponseDetails(req, res, {
                         status: 200,
                         success: true,
                         message: "✅ productPricing updated successfully",
                         result
-                    });
+                   }, cacheKey, 200);
                 }
             } catch (error) {
                 console.error('❌ Error updating productPricing:', error);
@@ -545,7 +542,7 @@ const updatePricingList= async(req, res) => {
                     success: false,
                     message: "Something went wrong while updating the record.",
                     error
-                });
+               }, cacheKey, 500);
             }
             }
         }
@@ -559,7 +556,7 @@ const updatePricingList= async(req, res) => {
             success:false,
             message:"Error in Update Student API", 
             error
-        })
+       }, cacheKey, 500)
     }
 }
 

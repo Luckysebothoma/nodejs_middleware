@@ -341,7 +341,7 @@ const updateProducts_Batch = async (req, res) => {
     return logResponseDetails(req, res, {
       status: 400,
       error: `Missing required fields: ${missingFields.join(", ")}`
-    });
+    },cacheKey,400);
   }
 
   try {
@@ -384,7 +384,7 @@ const updateProducts_Batch = async (req, res) => {
     console.log("✅ Batch upsert completed.");
 return logResponseDetails(req, res, {
       status: 200,
-      success: true });
+      success: true },cacheKey,200);
 
     
   } catch (error) {
@@ -392,7 +392,7 @@ return logResponseDetails(req, res, {
     console.error("🔥 Batch upsert error:", error);
    return logResponseDetails(req, res, {
       status: 500,
-     error: "Internal server error", details: error.message });
+     error: "Internal server error", details: error.message },cacheKey,500);
 
   } finally {
     await connection.end();
@@ -510,7 +510,7 @@ connection.commit(); // Lats Operation to commit to database
   if (!res.headersSent) {
    return logResponseDetails(req, res, {
       status: 500,
-     success: false, message: errorMessage });
+     success: false, message: errorMessage },cacheKey,500);
   }
 
 } finally {
@@ -522,7 +522,7 @@ connection.commit(); // Lats Operation to commit to database
         status: 200,
       success: true,
       message: `${getLongTime()}: Operation completed successfully`,
-    });
+    },cacheKey,500);
   }
 }
 
@@ -632,14 +632,14 @@ const deleteItem = async (req, res) => {
     const msg = `🗑️ Product ID [${productId}] deleted successfully`;
     console.log(`${getLongTime()}: ${msg}`);
     return   logResponseDetails(req, res,  {
-        status: 200, success: true, message: msg });
+        status: 200, success: true, message: msg },cacheKey,200);
 
   } catch (error) {
     const errMsg = `${getLongTime()}: ❌ Failed to delete productId [${productId}]: ${error}`;
     console.error(errMsg);
   return logResponseDetails(req, res, {
       status: 500,
-     success: false, message: errMsg });
+     success: false, message: errMsg },cacheKey,200);
   }
 };
 

@@ -31,7 +31,7 @@ logRequestDetails(req, "removeEstimateById");
      
                 success:false,
                 message:"PLease provide student Id => " + productId
-            })
+            }, cacheKey, 404)
         }else{
 
 
@@ -75,7 +75,7 @@ try {
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+        }, cacheKey, 500)
     }
 
 }
@@ -93,16 +93,17 @@ logRequestDetails(req, "getEstimates");
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-    res.status(200).send(data);
+        logResponseDetails(req, res, data, cacheKey, 200);
+    
+    //res.status(200).send(data);
   } catch (error) {
     console.error(formattedDate() + `getCachedOrQuery error for ${cacheKey}:`, error);
     return logResponseDetails(req, res, {
       status: 500,
-     
       success: false,
       message: `${formattedDate()} Error fetching ${cacheKey}`,
       error: error.message || error,
-    });
+    },cacheKey, 500);
   }
 
 }
@@ -110,7 +111,7 @@ logRequestDetails(req, "getEstimates");
 // Adding to Pricing Table
 const addEstimates = async(req, res) => {
 
-logRequestDetails(req, "addEstimates");
+logRequestDetails(req,cacheKey);
 
     try {
 
@@ -137,10 +138,9 @@ logRequestDetails(req, "addEstimates");
 
          return logResponseDetails(req, res, {
       status: 500,
-     
                 success:false,
                 message:"PLease Provide all fields"
-            })
+            }, cacheKey, 500)
 
         }else{
 
@@ -170,7 +170,7 @@ logRequestDetails(req, "addEstimates");
             success:false,
             message:"Error in create Student API ",
             error
-        })
+        }, cacheKey, 500)
         
     }
 
@@ -194,7 +194,7 @@ logRequestDetails(req, "deleteEstimates");
      
                 success:false,
                 message:"PLease provide student Id => " + productId
-            })
+            }, cacheKey, 500)
         }else{
 
 
@@ -212,7 +212,7 @@ logRequestDetails(req, "deleteEstimates");
      
                     success:true,
                     message:"ID [" + productId +"] DELETED Successfully"
-                })
+                }, cacheKey, 500)
 
 
 
@@ -224,7 +224,7 @@ logRequestDetails(req, "deleteEstimates");
                     success:false,
                     message:"Something happening while trying to delete",
                     error
-                })
+                }, cacheKey, 500)
                 
             }    
         
@@ -240,7 +240,7 @@ logRequestDetails(req, "deleteEstimates");
             success:false,
             message: "Error in Deleting Student",
             error
-        })
+        }, cacheKey, 500)
     }
 
 }
@@ -274,7 +274,7 @@ const updateEstimates= async(req, res) => {
      
                 success:false,
                 message:"Invalid IR Or provide id => "+ productId
-            })
+            }, cacheKey, 404)
 
         }else{
 
@@ -300,14 +300,14 @@ const updateEstimates= async(req, res) => {
             success: false,
             message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
             result
-            });
+            }, cacheKey, 404);
         } else {
             return logResponseDetails(req, res, {
             status: 200,
             success: true,
             message: "✅ Available items updated successfully",
             result
-            });
+            }, cacheKey, 200);
         } 
             } catch (error) {
                 console.log(error);
@@ -317,7 +317,7 @@ const updateEstimates= async(req, res) => {
                     success:false,
                     message:"Something wrong happened while updating the record \n _name" + _name + " _flavor" +_flavor + " _price" + _price + " _image_url" + _image_url, 
                     error
-                })
+                }, cacheKey, 200)
             }
         }
         
@@ -330,7 +330,7 @@ const updateEstimates= async(req, res) => {
             success:false,
             message:"Error in Update Student API", 
             error
-        })
+        }, cacheKey, 500)
     }
 }
 
