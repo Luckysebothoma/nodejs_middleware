@@ -39,7 +39,8 @@ try {
     const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
     const replacements = [cacheKey, productId];
 
-    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
+     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
+        result.info = cacheKey;
 
     if (result.affectedRows > 0) {
         res.status(200).send({

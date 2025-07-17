@@ -73,7 +73,7 @@ console.log("Updating image for paramters:", req.params)
   await imageService.updateImage(req.params.id, { filename: originalname, mimetype, size, buffer });
   res.json({ message: 'Updated' });
 });
- */
+ */ 
 
 // Price Tracing
 router.post("/addPriceTracing", addPriceTracing);

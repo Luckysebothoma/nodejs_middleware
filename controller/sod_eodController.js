@@ -3,6 +3,7 @@ import { query } from "express";
  import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+ import { getConnection } from '../config/db.js';
 
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
@@ -92,7 +93,7 @@ logRequestDetails(req, "addSodEodList");
         const replacements = [productName, itemsTaken,itemsRemaining, lastUpdated,productId, availableItems, outOfStock];
      
         // Execute the query
-        await addCachedAndQuery(cacheKey, query, query, replacements);
+        await addCachedAndQuery(cacheKey,  query , replacements);
      
      
          } catch (error) {
@@ -311,7 +312,7 @@ logRequestDetails(req, "updateSodEodItems");
 
                 console.log('Updating sodEodItems with replacements:', replacements);
 
-                const result = await updateCachedOrQuery(cacheKey, query, query, replacements);
+                const result = await updateCachedOrQuery(cacheKey,  query , replacements);
                 console.log('✅ sodEodItems updated successfully:', result);
             } catch (error) {
                 console.error('❌ Error updating sodEodItems:', error);
@@ -399,7 +400,7 @@ logRequestDetails(req, "addSodEodItems");
         const replacements = [productName, itemsTaken,itemsRemaining, lastUpdated,productId];
      
         // Execute the query
-        const data = await addCachedAndQuery(cacheKey, query, query, replacements);
+        const data = await addCachedAndQuery(cacheKey,  query , replacements);
 
             
             

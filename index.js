@@ -85,14 +85,58 @@ const allowedOrigins = [
   "https://sweety-sweet-app.lucky-sebothoma-3.workers.dev"
 ];
 
+app.use((req, res, next) => {
+  const startTime = Date.now();
+
+  // Hook into `res.send` to log just before sending the response
+  const originalSend = res.send;
+  res.send = function (body) {
+    const durationMs = Date.now() - startTime;
+
+    const logData = {
+      timestamp: new Date().toISOString(),
+      method: req.method,
+      url: req.originalUrl,
+      status: res.statusCode,
+      durationMs,
+      ip: req.ip,
+      headers: req.headers,
+      query: req.query,
+      body: req.body,
+      params: req.params,
+    };
+    logRequestDetails(req)
+
+    // Log only if it's 404
+    if (res.statusCode === 404) {
+      console.warn(`🚫 404 Not Found`, logData);
+      logResponseDetails(req, res,{logData})
+    }
+
+    // You can also call your own logger here
+    // logResponseDetails(req, res, logData);
+
+    // Call the original res.send
+    return originalSend.call(this, body);
+  };
+
+  next();
+});
+
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
-    else callback(new Error("Not allowed by CORS"));
-  },
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`Not allowed by CORS: ${origin}`));
+    }
+  }, 
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true, // if you're using cookies or Auth headers
   optionsSuccessStatus: 200
 }));
-
 // Prometheus metrics
 //const register = new Registry();
 //collectDefaultMetrics({ register });
@@ -154,13 +198,13 @@ app.post('/update-product', async (req, res) => {
 });
 
 
-
+/*
 app.use("*", (req, res, next) => {
   logRequestDetails(req, `Accessed path: ${req.originalUrl}`);
   console.log("Headers:", req.headers);
   next();
 });
-
+*/
 // POST /images/temp - Upload image to Redis only
 app.post('/images/temp-key', async (req, res) => {
 
@@ -331,18 +375,23 @@ app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
     const base64FromBody = req.body.base64;
 
     if (!file) {
-      return res.status(400).json({ error: '❌ No image blob received in formData.' });
+     // return res.status(400).json({ error: '❌ No image blob received in formData.' });
+     logResponseDetails(req, res,{ error: '❌ No image blob received in formData.' })
+
     }
 
     if (!redisKey) {
-      return res.status(400).json({ error: '❌ Redis key missing in formData.' });
+//      return res.status(400).json({ error: '❌ Redis key missing in formData.' });
+      logResponseDetails(req, res,{ error: '❌ Redis key missing in formData.' })
     }
-
+/*
     console.log(`${getLongTime(new Date)} - 🖼️ Image Received:`, {
       originalname: file.originalname,
       mimetype: file.mimetype,
       size: file.size,
     });
+*/
+    logRequestDetails(req)
 
     // Choose whether to use base64 from client or server-side conversion
     const buffer = file.buffer;
@@ -350,9 +399,11 @@ app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
 
     // ✅ Store in Redis
     //await setDataWithExpiry(redisKey, base64);
-    console.log(`${getLongTime(new Date)} - ✅ Image stored in Redis under key: ${redisKey}`);
+//    console.log(`${getLongTime(new Date)} - ✅ Image stored in Redis under key: ${redisKey}`);
 
-    res.status(200).json({ message: '✅ Image stored in Redis', key: redisKey });
+    //res.status(200).json({ message: '✅ Image stored in Redis', key: redisKey });
+
+    logResponseDetails(req, res,{message: '✅ Image stored in Redis', key: redisKey },req.path,200)
   } catch (err) {
     console.error(`${Date.now()} - ❌ Error in /sortedAsRedisKey:`, err);
     res.status(500).json({ error: 'Server error while uploading image' });
@@ -525,6 +576,7 @@ function startWorkerProcesses(app, credentials) {
 
   if (cluster.isPrimary) {
     console.log(`${getShortTime(new Date())} Master PID ${process.pid} with ${cpuCount} CPUs`);
+    //logRequestDetails(app,credentials)
     for (let i = 0; i < cpuCount - 1; i++) cluster.fork();
 
     cluster.on("exit", worker => {

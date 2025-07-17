@@ -35,7 +35,7 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
 
   if (mode === 'short' || mode === 'both') {
     console.log(`📝 ${dynamicLabel} @ ${isoTimestamp}`);
-   // console.table(shortLog);
+    //console.table(shortLog);
   }
 
   const [sec, nano] = process.hrtime(startHrTime);
@@ -58,8 +58,8 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
   });
 
   if (mode === 'full' || mode === 'both') {
-    await publishToQueue(`logs.request.telegraf.${req.hostname}`, telegrafLog);
-    await publishToQueue(`logs.request.${req.hostname}`, fullLog);
+    await publishToQueue(`logs.request.telegraf.${req.hostname}.${req.path}`, telegrafLog);
+    await publishToQueue(`logs.request.${req.hostname}.${req.path}`, fullLog);
   }
 
 
@@ -124,8 +124,9 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
   const dataLength = Array.isArray(data) ? data.length : 0;
   const payloadLength= payload.length;
   const totalProfit = Array.isArray(data)
-    ? data.reduce((sum, item) => sum + (parseFloat(item.productProfit) || 0), 0)
-    : 0;
+
+//    ? data.reduce((sum, item) => sum + (parseFloat(item.productProfit) || 0), 0)
+//    : 0;
 
   const telegrafResponse = buildTelegrafPayload({
     measurement: 'http_responses',
@@ -140,7 +141,7 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
       message_length: message.length || 0,
       response_size: Buffer.byteLength(JSON.stringify(Global_apiResponse)),
       data_length: payloadLength,
-      total_profit: +totalProfit.toFixed(2),
+      data_payload:data,
       duration_ms: durationMs,
     },
     timestamp: now * 1e6,
@@ -153,14 +154,14 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
       path: req.path,
       status,
       items: payloadLength,
-      payload: payload.length,
+      payload: payload,
       durationMs,
     });
   }
 
   if (mode === 'full' || mode === 'both') {
-    await publishToQueue(`logs.response.telegraf.${req.hostname}`, telegrafResponse);
-    await publishToQueue(`logs.responses.${req.hostname}`, {
+    await publishToQueue(`logs.response.telegraf.${req.hostname}.${req.path}`, telegrafResponse);
+    await publishToQueue(`logs.responses.${req.hostname}.${req.path}`, {
       time: isoTimestamp,
       method: req.method,
       path: req.path,
@@ -168,6 +169,7 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
       status,
       responseMeta: Global_apiResponse,
       durationMs,
+      payload: data
     });
   }
 

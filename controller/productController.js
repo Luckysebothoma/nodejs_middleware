@@ -416,21 +416,17 @@ logRequestDetails(req, "addProduct");
         // Parameterized query with replacements
         const replacements = [productId, productName,productFlavor,productPrice, image_url];
 
+        const connection = await getConnection();
         // Execute the query
-        addCachedAndQuery(cacheKey, query, query, replacements);
+        const dbres = await addCachedAndQuery(cacheKey,  query , replacements, connection);
         
-        
+        logResponseDetails(req, res, dbres, cacheKey, 200)
         }
 
 
 
     } catch (error) {
-         return logResponseDetails(req, res, {
-      status: 404,
-            success:false,
-            message:"Error in create Student API ",
-            error
-       }, cacheKey,500)
+         return logResponseDetails(req, res, error , cacheKey,500)
         
     }
 

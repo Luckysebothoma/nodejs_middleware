@@ -1,6 +1,7 @@
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+ import { getConnection } from '../config/db.js';
 
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
@@ -138,7 +139,7 @@ const addStock = async(req, res) => {
 
         // Execute the query
                   
-            addCachedAndQuery("stockItems",query, query, replacements)
+            addCachedAndQuery(cacheKey, query , replacements)
             
             
 
@@ -202,7 +203,7 @@ const addStockedItems = async(req, res) => {
         const replacements = [productId, stockDate,stockId,stockPrice, stockQuantity];
 
         
-        const result = await addCachedAndQuery("stockedItems",query, query, replacements)
+        const result = await addCachedAndQuery("stockedItems", query , replacements)
 
         res.status(200).send({
             success:true,

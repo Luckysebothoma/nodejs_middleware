@@ -3,6 +3,10 @@
 let keyExist = false;
 import TimeUtils from '../utils/Time.js';
 import ControllerHandler from "../utils/ControllerHandler.js";
+
+
+ import { getConnection } from '../config/db.js';
+
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
 const {
@@ -38,7 +42,7 @@ try {
     const replacements = [cacheKey, productId];
 
     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
-
+        result.info = cacheKey;
     if (result.affectedRows > 0) {
         res.status(200).send({
             success: true,
@@ -275,7 +279,7 @@ const addAvailableItems = async(req, res) => {
         `;   // Parameterized query with replacements
         const replacements = [productId, itemsRemaining, lastUpdated];
 
-        addCachedAndQuery("availableItems", query, query, replacements);
+        addCachedAndQuery(cacheKey, query , replacements);
         
         
         }

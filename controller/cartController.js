@@ -114,7 +114,7 @@ const add2Cart = async(req, res) => {
         const replacements = [productId, productName,productFlavor,productPrice];
 
         // Execute the query
-        results = await addCachedAndQuery(cacheKey,query, query, replacements);
+        results = await addCachedAndQuery(cacheKey,query , replacements);
 
         return logResponseDetails(req, res, {
       status: 200,

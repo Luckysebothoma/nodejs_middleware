@@ -3,6 +3,7 @@ import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+ import { getConnection } from '../config/db.js';
 
 
 const {
@@ -85,9 +86,10 @@ logRequestDetails(req, "addProductItemPricing");
 
         // Parameterized query with replacements
         const replacements = [productId, productDescription,itemGroup,itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission];
-
+       const connection = await getConnection();
         // Execute the query
-        addCachedAndQuery(cacheKey, query, query, replacements);
+        const dbres = await addCachedAndQuery(cacheKey,  query , replacements, connection);
+        logResponseDetails(req, res, dbres, cacheKey, 200)
         
         
         }

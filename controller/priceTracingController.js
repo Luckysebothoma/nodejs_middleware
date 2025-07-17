@@ -1,6 +1,7 @@
   import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+ import { getConnection } from '../config/db.js';
 
 
  const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
@@ -35,16 +36,17 @@ const removeEstimateById = async(req, res) =>{
             try {
 				
 
-                const data = await dbSequelize.query('DELETE FROM priceTracing WHERE productId = :productId', {
+                 const data = await dbSequelize.query('DELETE FROM priceTracing WHERE productId = :productId', {
                     replacements: { productId }, // Pass the parameter explicitly
                     type: dbSequelize.QueryTypes.DELETE
                 }); 
+        data.info = cacheKey;
 
                 return logResponseDetails(req, res, {
       status: 200,
      
                     success:true,
-                    message:"ID [" + productId +"] DELETED Successfully"
+                    message:data
                 }, cacheKey, 200)
 
 
@@ -259,7 +261,7 @@ const addPriceTracing  = async(req, res) => {
         const replacements = [productId,lastUpdated,accAmount];
 
         // Execute the query
-        addCachedAndQuery(cacheKey,query, query, replacements)
+        addCachedAndQuery(cacheKey,query , replacements)
         
         
         }

@@ -2,6 +2,7 @@
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+ import { getConnection } from '../config/db.js';
 
 
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
@@ -72,6 +73,8 @@ const getPricingList = async(req, res) =>{
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
+    data.info = cacheKey;
+
     logResponseDetails(req, res, data, cacheKey,200);
 
   } catch (error) {
@@ -121,7 +124,6 @@ const add2Pricing = async(req, res) => {
         const query = `
             INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
                 costPerItem = VALUES(costPerItem),
                 sellingPrice = VALUES(sellingPrice),
                 productCommission = VALUES(productCommission),
@@ -134,7 +136,7 @@ const add2Pricing = async(req, res) => {
         const replacements = [productId, costPerItem,sellingPrice,productCommission, productProfit, productQuantity, productSize];
 
         // Execute the query
-        addCachedAndQuery(cacheKey, query, query, replacements);
+        addCachedAndQuery(cacheKey,  query , replacements);
         
         
         }

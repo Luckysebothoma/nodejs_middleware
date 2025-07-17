@@ -3,6 +3,11 @@
 import { getConnection } from '../config/db.js';
 import TimeUtils from './Time.js';
 const { getLongTime } = TimeUtils;
+import { logRequestDetails, logResponseDetails } from './requestLogger.js';
+// Correct way for default export
+//import redisCache from '../config/redisClient.js';
+
+//const { cacheGet, cacheSet, cacheDelete, connectRedis, cacheExists } = redisCache;
 
 // 📌 TTL for future cache integration (optional)
 const TTL_SECONDS = 30000 * 10;
@@ -13,21 +18,33 @@ const getCachedOrQuery = async (key, mysqlQuery) => {
   if (!connection) throw new Error("❌ MySQL connection failed");
 
   try {
+
+
+    /*
+    const keyExist = await cacheExists(key);
+
+    if (keyExist.success) {
+      console.log(`✅  Cache ${key} HIT ...!`);
+      // You might return the cache here if you want to short-circuit
+    } else {
+      console.log(`❌ Cache ${key} Missed ...!`);
+    }
+*/
     console.log(`${getLongTime()}🔍 Executing SELECT for key [${key}]`);
-    const result = await connection.query(mysqlQuery);
-    if (!result || !result.length) {
+
+    const [rows] = await connection.query(mysqlQuery); // ✅ FIXED
+
+    if (!rows || rows.length === 0) {
       console.warn(`${getLongTime()}⚠️ Empty result for key: [${key}]`);
       throw new Error(`No result found for key: ${key}`);
     }
 
-    console.log(`${getLongTime()}✅ SELECT success: ${result.length} rows`);
-    
-    return result;
-    
+    console.log(`${getLongTime()}✅ SELECT success: ${rows.length} rows on key ${key}`);
 
+    return rows; // ✅ return clean data
 
   } catch (err) {
-    console.error(`${getLongTime()}❌ SELECT failed:`, err.message);
+    console.error(`${getLongTime()}❌ SELECT failed on key ${key}:`, err.message);
     throw err;
   } finally {
     connection.release();
@@ -35,8 +52,13 @@ const getCachedOrQuery = async (key, mysqlQuery) => {
   }
 };
 
+
 // 🔧 Reusable: INSERT with validation and optional retry logic
-const addCachedAndQuery = async (key, mysqlInsertQuery, values = [], connection) => {
+const addCachedAndQuery = async (key, mysqlInsertQuery, values = [], _connection) => {
+
+    const connection = await getConnection();
+  if (!connection) throw new Error("❌ MySQL connection failed");
+
   if (!key || !mysqlInsertQuery || !Array.isArray(values)) {
 
     // Show which input is missing or invalid
@@ -46,7 +68,7 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, values = [], connection)
       values
     });
 
-    throw new Error(`❌ Invalid input to addCachedAndQuery`);
+    throw new Error(`❌ Invalid input to addCachedAndQuery on key ${key}`);
   }
 
   if (!connection) throw new Error("❌ MySQL connection not provided");
@@ -59,8 +81,9 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, values = [], connection)
     });
     const result = await connection.query(mysqlInsertQuery, values);
 
-    console.log(`${getLongTime()}✅ INSERT successful:`);
+    console.log(`${getLongTime()}✅ INSERT successful on key ${key}:`);
     return result;
+    
   } catch (err) {
     console.error(`${getLongTime()}❌ INSERT failed for key [${key}]:`, err.message);
     throw err;
@@ -90,7 +113,7 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, values = []) => {
     if (result.affectedRows === 0) {
       console.warn(`${getLongTime()}⚠️ No rows updated for key: [${key}]`);
     } else {
-      console.log(`${getLongTime()}✅ Updated ${result.affectedRows} rows`);
+      console.log(`${getLongTime()}✅ Updated ${result.affectedRows} rows on key ${key}`);
     }
 
     await connection.commit();
@@ -117,7 +140,7 @@ const removeCachedAndQuery = async (key, mysqlDeleteQury, value) => {
     const result = await connection.query(mysqlDeleteQury, value);
     connection.commit()
 
-    console.log(`${getLongTime()}✅ Delete result:`, result);
+    console.log(`${getLongTime()}✅ Delete result: on key ${key} `, result);
     return result;
   } catch (err) {
     connection.rollback();
