@@ -1,5 +1,5 @@
 import promClient from 'prom-client';
-import { publishToQueue } from '../utils/rabbitMQPublisher.js';  // Assumes you are publishing to RabbitMQ
+import { publishToQueue, publishToQueueAndPrometheus } from '../utils/rabbitMQPublisher.js';  // Assumes you are publishing to RabbitMQ
 import { matchEndpointLabel } from './endpointLogMap.js';
 import {buildTelegrafPayload} from "../data_transformer/telegraf_json.js"
  
@@ -58,8 +58,14 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
   });
 
   if (mode === 'full' || mode === 'both') {
-    await publishToQueue(`logs.request.telegraf.${req.hostname}.${req.path}`, telegrafLog);
-    await publishToQueue(`logs.request.${req.hostname}.${req.path}`, fullLog);
+
+ //   await publishToQueue(`logs.request.telegraf.${req.hostname}${req.path}`, telegrafLog);
+ //   await publishToQueue(`logs.request.${req.hostname}${req.path}`, fullLog);
+    await publishToQueueAndPrometheus(`logs.request.telegraf.${req.hostname}${req.path}`, telegrafLog);
+    await publishToQueueAndPrometheus(`logs.request.${req.hostname}${req.path}`, fullLog);
+
+
+    
   }
 
 
@@ -82,34 +88,40 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
   const now = Date.now();
   const isoTimestamp = new Date(now).toISOString();
   const dynamicLabel = matchEndpointLabel(req.method, req.path) || manualLabel || '🗂️ Unknown Endpoint';
-  let Global_Success_Status = false
-  let Global_apiResponse = false
+  const Global_Success_Status = false
+  const Global_apiResponse = false
 
    const message = "" || '';
    console.log("payload to be sent", JSON.stringify(payload).length)
   const data = payload || [];
 
-  
+  const apiResponse ={
+      success:false,
+      message: message,
+      data: JSON.stringify(payload)
+    } 
   if(status === 200){
      const apiResponseStatus = {
     success:true,
-    message:message,
+    message:`Success`,
     data: payload,
    };
-   Global_apiResponse = apiResponseStatus
-   Global_Success_Status =true
+ 
   res.status(status).send(apiResponseStatus);
 
   }else{
-     const apiResponse = {
+
+
+     apiResponse = {
     success:false,
-    message:message,
+    message:`Failed`,
     data:JSON.stringify(payload),
    };
-   Global_Success_Status = false
-   Global_apiResponse = apiResponse
+
+ 
 
   res.status(status).send(apiResponse);
+
 
   }
  
@@ -137,12 +149,18 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
       status: status.toString(),
     },
     fields: {
-      success: Global_Success_Status ? 1 : 0,
+      success: apiResponse.success ? 1 : 0,
       message_length: message.length || 0,
       response_size: Buffer.byteLength(JSON.stringify(Global_apiResponse)),
       data_length: payloadLength,
       data_payload:data,
       duration_ms: durationMs,
+      payloadSize: payload.length,
+      duration:durationMs,
+      label: dynamicLabel,
+      time: isoTimestamp,
+      hostname: req.hostname
+      
     },
     timestamp: now * 1e6,
   });
@@ -151,26 +169,33 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
     //console.log(`✅ [${status}] ${dynamicLabel} @ ${isoTimestamp}`);
     console.table({
       method: req.method,
-      path: req.path,
-      status,
+      endpoint: req.path,
+      httpsStatus: status,
       items: payloadLength,
-      payload: payload,
-      durationMs,
+      payloadSize: payload.length,
+      duration:durationMs,
+      label: dynamicLabel,
+      time: isoTimestamp,
+      hostname: req.hostname
     });
   }
 
   if (mode === 'full' || mode === 'both') {
-    await publishToQueue(`logs.response.telegraf.${req.hostname}.${req.path}`, telegrafResponse);
-    await publishToQueue(`logs.responses.${req.hostname}.${req.path}`, {
+
+    await publishToQueueAndPrometheus(`logs.response.telegraf.${req.hostname}.${req.path}`, telegrafResponse);
+    await publishToQueueAndPrometheus(`logs.responses.${req.hostname}.${req.path}`, {
       time: isoTimestamp,
       method: req.method,
       path: req.path,
       label: dynamicLabel,
-      status,
-      responseMeta: Global_apiResponse,
+      status:status,
+      responseMeta: apiResponse.success,
       durationMs,
       payload: data
     });
+
+  //  await publishToQueueAndPrometheus(`logs.response.telegraf.${req.hostname}${req.path}`, telegrafLog);
+  //  await publishToQueueAndPrometheus(`logs.response.${req.hostname}${req.path}`, fullLog);
   }
 
 
