@@ -20,9 +20,11 @@ import { fileURLToPath } from 'url';
 
 import { logRequestDetails, logResponseDetails } from './utils/requestLogger.js';
 
+import redisClient from './config/redisClient.js';
 
+const  {connectRedis, cacheSet, cacheGet, cacheDelete, cacheExists} = redisClient;
 
- 
+ import { uploadImage } from './controller/uploadController.js';
 
 import ControllerHandler from "./utils/ControllerHandler.js"
 const {
@@ -85,6 +87,26 @@ const allowedOrigins = [
   "https://sweety-sweet-app.lucky-sebothoma-3.workers.dev"
 ];
 
+
+
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`Not allowed by CORS: ${origin}`));
+    }
+  }, 
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true, // if you're using cookies or Auth headers
+  optionsSuccessStatus: 200
+}));
+// Prometheus metrics
+//const register = new Registry();
+//collectDefaultMetrics({ register });
+
 app.use((req, res, next) => {
   const startTime = Date.now();
 
@@ -122,26 +144,6 @@ app.use((req, res, next) => {
 
   next();
 });
-
-
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`Not allowed by CORS: ${origin}`));
-    }
-  }, 
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true, // if you're using cookies or Auth headers
-  optionsSuccessStatus: 200
-}));
-// Prometheus metrics
-//const register = new Registry();
-//collectDefaultMetrics({ register });
-
-
 
 export const requestLoggerMiddleware = (req, res, next) => {
   logRequestDetails(req, '🌐 Global Request Logger');
@@ -192,7 +194,7 @@ app.post('/update-product', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Error updating product:', err);
+   console.error(getLongTime(new Date) +  'Error updating product:', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -201,49 +203,20 @@ app.post('/update-product', async (req, res) => {
 /*
 app.use("*", (req, res, next) => {
   logRequestDetails(req, `Accessed path: ${req.originalUrl}`);
-  console.log("Headers:", req.headers);
+console.log(getLongTime(new Date) +  getLongTime(new Date) +  "Headers:", req.headers);
   next();
 });
 */
 // POST /images/temp - Upload image to Redis only
-app.post('/images/temp-key', async (req, res) => {
 
-   
-  const { originalname, mimetype, buffer, size } = req.file || {};
-  const { headers, method, url, body } = req;
-  const logObj = {
-    file: { originalname, mimetype, size },
-    request: { method, url, headers, body }
-  };
-  console.log("Time to upload images with following structure:", logObj);
-  try {
-    if (!req.file) return res.status(400).json({ message: 'No image provided' });
-    const filename = logObj.file.originalname;
-    const imageId = uuidv4();
-    const key = `temp:${filename}:${imageId}`;
+//app.post('/images/temp-key', async (req, res) => {
 
-    const imageData = {
-      buffer: req.file.buffer.toString('base64'), // Store as base64
-      mimetype: req.file.mimetype,
-      originalname: req.file.originalname
-    };
-
-    // Set with TTL (e.g., 10 minutes)
-  //  await setData(key, JSON.stringify(imageData));
-  //  return key;
-    
-  res.status(200).json({ success: true });
-  } catch (err) {
-    console.error('Redis upload error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
 
 // Routes
 app.get("/", (req, res) => {
 
   
-  res.status(200).send("Hello World!");
+  logResponseDetails(req, res, "Hello World!", "/",200);
  
 });
 
@@ -257,7 +230,8 @@ app.get('/metrics', async (req, res) => {
     res.set('Content-Type', register.contentType);
     const metrics = await register.metrics();
     //logResponseDetails(req, res, { status: 200, data: metrics });
-    res.end(metrics);
+    //res.end(metrics);
+    logResponseDetails(req, res, metrics,"/metrics",200)
 
   } catch (err) {
     //logResponseDetails(req, res, { status: 500, error: err.message });
@@ -277,6 +251,7 @@ const upload = multer({ dest: 'uploads/' }); // Will store file temporarily
 
 app.post("/images/temp", upload.single("file"), async (req, res) => {
  
+logRequestDetails(req,res,cacheKey);
 
   const key = req.query.key;
   if (!req.file || !key) return res.status(400).json({ error: "Missing file or key" });
@@ -290,19 +265,23 @@ app.post("/images/temp", upload.single("file"), async (req, res) => {
   try {
     //await set(key, JSON.stringify(imageData));
    
-    res.status(200).json({ message: "Image stored in Redis", key });
+    logResponseDetails(req,res,{ message: "Image stored in Redis", key });
   } catch (err) {
-    res.status(500).json({ error: "Redis error" });
+    logResponseDetails(req,res, {error: "Redis error" });
   }
 
 
  
 });
+
+app.use('/uploads', express.static('uploads'));
+app.post('/upload', uploadImage);
+
 import updateRouter from "./routes/updateProductRoutemySql_Redis.js";
 
 // POST /sortedAsRedisKey
 /*app.post('/sortedAsRedisKey', upload.single('file'), async (req, res) => {
-  console.log("logs for sortedAsRedisKey:",req)
+console.log(getLongTime(new Date) +  getLongTime(new Date) +  "logs for sortedAsRedisKey:",req)
   try {
     const { file } = req;
 
@@ -324,7 +303,7 @@ import updateRouter from "./routes/updateProductRoutemySql_Redis.js";
 
     res.status(200).json({ message: 'Image stored in Redis', key: redisKey });
   } catch (err) {
-    console.error('❌ Error uploading image:', err);
+   console.error(getLongTime(new Date) +  '❌ Error uploading image:', err);
     res.status(500).json({ error: 'Server error while uploading image' });
   }
 });
@@ -334,7 +313,7 @@ import updateRouter from "./routes/updateProductRoutemySql_Redis.js";
 
 app.post('/frontend-metrics', (req, res) => {
   const { metricName, value, type = 'gauge', labels = {} } = req.body;
-  console.log(`📊 Metric Received → ${metricName} = ${value} [${type}]`, labels);
+ console.log(getLongTime(new Date) +  `📊 Metric Received → ${metricName} = ${value} [${type}]`, labels);
   // Store to DB, forward to Prometheus, etc.
   res.status(200).send({ status: 'Metric received' });
 });
@@ -343,12 +322,12 @@ app.post('/frontend-console', (req, res) => {
   const { log, metricName, value, type = 'gauge', labels } = req.body;
 
   if (log) {
-    console.log(`🪵 Console Log: ${log}`);
+   console.log(getLongTime(new Date) +  `🪵 Console Log: ${log}`);
     return res.status(200).send({ status: 'Console log received' });
   }
 
   if (metricName) {
-    console.log(`📊 Console Metric → ${metricName} = ${value} [${type}]`, labels);
+   console.log(getLongTime(new Date) +  `📊 Console Metric → ${metricName} = ${value} [${type}]`, labels);
     return res.status(200).send({ status: 'Console metric received' });
   }
 
@@ -360,7 +339,7 @@ app.post('/frontend-error', (req, res) => {
   if (!componentName || !value) {
     return res.status(400).send({ error: 'Missing error info' });
   }
-  console.error(`🔥 Frontend Error from ${componentName}: ${value}`);
+ console.error(getLongTime(new Date) +  `🔥 Frontend Error from ${componentName}: ${value}`);
   // Store in DB or log file
   res.status(200).send({ status: 'Error logged' });
 });
@@ -385,7 +364,7 @@ app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
       logResponseDetails(req, res,{ error: '❌ Redis key missing in formData.' })
     }
 /*
-    console.log(`${getLongTime(new Date)} - 🖼️ Image Received:`, {
+   console.log(getLongTime(new Date) +  `${getLongTime(new Date)} - 🖼️ Image Received:`, {
       originalname: file.originalname,
       mimetype: file.mimetype,
       size: file.size,
@@ -399,13 +378,13 @@ app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
 
     // ✅ Store in Redis
     //await setDataWithExpiry(redisKey, base64);
-//    console.log(`${getLongTime(new Date)} - ✅ Image stored in Redis under key: ${redisKey}`);
+//   console.log(getLongTime(new Date) +  `${getLongTime(new Date)} - ✅ Image stored in Redis under key: ${redisKey}`);
 
     //res.status(200).json({ message: '✅ Image stored in Redis', key: redisKey });
 
     logResponseDetails(req, res,{message: '✅ Image stored in Redis', key: redisKey },req.path,200)
   } catch (err) {
-    console.error(`${Date.now()} - ❌ Error in /sortedAsRedisKey:`, err);
+   console.error(getLongTime(new Date) +  `${Date.now()} - ❌ Error in /sortedAsRedisKey:`, err);
     res.status(500).json({ error: 'Server error while uploading image' });
 
   }
@@ -441,7 +420,7 @@ app.post('/upload', uploada.array('images', 10), (req, res) => {
     }
     res.status(200).json({ message: 'Images uploaded successfully', files });
   } catch (err) {
-    console.error('Upload error:', err);
+   console.error(getLongTime(new Date) +  'Upload error:', err);
     res.status(500).json({ message: 'Server error', error: err });
   }
 });
@@ -482,7 +461,7 @@ app.post('/images/temp', upload_temp.single('file'), async (req, res) => {
     const finalPath = path.join(tempDir, newFileName);
 
     fs.renameSync(file.path, finalPath);
-    console.log(`[${getLongTime(new Date)}] ✅ Temp file stored as: ${finalPath}`);
+   console.log(getLongTime(new Date) +  `[${getLongTime(new Date)}] ✅ Temp file stored as: ${finalPath}`);
 
     return res.status(200).json({
       message: '✅ Temp image uploaded',
@@ -496,7 +475,7 @@ app.post('/images/temp', upload_temp.single('file'), async (req, res) => {
       storedPath: finalPath
     });
   } catch (err) {
-    console.error(`[${new Date().toISOString()}] ❌ Server error:`, err);
+   console.error(getLongTime(new Date) +  `[${new Date().toISOString()}] ❌ Server error:`, err);
     return res.status(500).json({ error: 'Server error while uploading image.' });
   }
 });
@@ -565,7 +544,7 @@ app.post('/upload', upload.array('files'), async (req, res) => {
 
     res.status(200).json({ message: 'Images uploaded', keys: uploadedKeys });
   } catch (err) {
-    console.error('Upload error:', err);
+   console.error(getLongTime(new Date) +  'Upload error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -575,28 +554,28 @@ function startWorkerProcesses(app, credentials) {
   const cpuCount = cpus().length;
 
   if (cluster.isPrimary) {
-    console.log(`${getShortTime(new Date())} Master PID ${process.pid} with ${cpuCount} CPUs`);
+   console.log(getLongTime(new Date) +  `${getShortTime(new Date())} Master PID ${process.pid} with ${cpuCount} CPUs`);
     //logRequestDetails(app,credentials)
     for (let i = 0; i < cpuCount - 1; i++) cluster.fork();
 
     cluster.on("exit", worker => {
-      console.log(`${formattedDate()} Worker ${worker.process.pid} died, restarting...`);
+     console.log(getLongTime(new Date) +  `${formattedDate()} Worker ${worker.process.pid} died, restarting...`);
       cluster.fork();
     });
   } else {
     createHttpServer(app).listen(80, () => {
-      console.log(`${formattedDate()} Server running on http://localhost:80`);
+     console.log(getLongTime(new Date) +  `${formattedDate()} Server running on http://localhost:80`);
     });
 
     createServer(credentials, app).listen(443, () => {
-      console.log(`${formattedDate()} Server running on https://localhost:443`);
+     console.log(getLongTime(new Date) +  `${formattedDate()} Server running on https://localhost:443`);
     });
   }
 }
 
 // 🛡️ Optional: error handling middleware
 app.use((err, req, res, next) => {
-  console.error('🔥 Global Error Handler:', err.message);
+ console.error(getLongTime(new Date) +  '🔥 Global Error Handler:', err.message);
   res.status(500).json({ error: 'Internal Server Error' });
 });
 

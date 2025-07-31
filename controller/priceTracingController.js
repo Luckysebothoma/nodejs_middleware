@@ -22,8 +22,10 @@ const removeEstimateById = async(req, res) =>{
     try {
 
         
+             const productId = req.params.id;
 
-        if(!productId){
+//            const productId = req.params.id;
+         if(!productId){
          return logResponseDetails(req, res, {
       status: 404,
      
@@ -84,8 +86,7 @@ const removePriceTracing = async(req, res) =>{
     logRequestDetails(req, "removePriceTracing")
     try {
 
-        const productId = req.params.id;
-
+    const productId = req.body.id;
         if(!productId){
          return logResponseDetails(req, res, {
       status: 404,
@@ -103,24 +104,23 @@ try {
     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
     if (result.affectedRows > 0) {
-        res.status(200).send({
+        return logResponseDetails(req, res, {
             success: true,
             message: `ID [${productId}] deleted successfully`,
-        });
+        },cacheKey,200);
     } else {
-        res.status(404).send({
+        return logResponseDetails(req, res, {
             success: false,
             message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
+        },cacheKey,200);
     }
 
 } catch (error) {
-    console.error(error);
-    res.status(500).send({
+    return logResponseDetails(req, res, {
         success: false,
         message: "Error occurred while trying to delete.",
         error,
-    });
+    }, cacheKey, 500);
 }
   
         
@@ -129,10 +129,8 @@ try {
         }
         
     } catch (error) {
-        console.log(error)
+      //  console.log(error)
         return logResponseDetails(req, res, {
-      status: 500,
-     
             success:false,
             message: "Error in Deleting Student",
             error
@@ -200,7 +198,7 @@ const getPriceTracing = async(req, res) =>{
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-    logResponseDetails(req, res, data, cacheKey,200);
+    return logResponseDetails(req, res, data, cacheKey,200);
 
 
   } catch (error) {

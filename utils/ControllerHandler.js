@@ -35,8 +35,11 @@ const getCachedOrQuery = async (key, mysqlQuery) => {
     const [rows] = await connection.query(mysqlQuery); // ✅ FIXED
 
     if (!rows || rows.length === 0) {
+
       console.warn(`${getLongTime()}⚠️ Empty result for key: [${key}]`);
-      throw new Error(`No result found for key: ${key}`);
+      //throw new Error(`No result found for key: ${key}`);
+      return [];
+
     }
 
     console.log(`${getLongTime()}✅ SELECT success: ${rows.length} rows on key ${key}`);
@@ -45,7 +48,9 @@ const getCachedOrQuery = async (key, mysqlQuery) => {
 
   } catch (err) {
     console.error(`${getLongTime()}❌ SELECT failed on key ${key}:`, err.message);
-    throw err;
+    
+    throw new Error(`${getLongTime()}❌ SELECT failed on key ${key}:`, err.message);
+    
   } finally {
     connection.release();
     console.log(`${getLongTime()}🔚 Connection released for key: [${key}]`);
@@ -86,6 +91,7 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, values = [], _connection
     
   } catch (err) {
     console.error(`${getLongTime()}❌ INSERT failed for key [${key}]:`, err.message);
+     throw new Error(`${getLongTime()}❌ INSERT failed for key [${key}]:`, err.message);
     throw err;
   } finally {
     connection.release();
@@ -109,6 +115,16 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, values = []) => {
     await connection.beginTransaction();
 
     const result = await connection.query(mysqlUpdateQuery, values);
+    /*
+    connection.query(query, replacements, (err, results) => {
+  if (err) {
+    console.error("Insert error:", err);
+    return res.status(500).json({ success: false, message: "Database insert failed" });
+  }
+
+  return res.status(200).json({ success: true, message: "Estimate added successfully", data: results });
+});
+    */
 
     if (result.affectedRows === 0) {
       console.warn(`${getLongTime()}⚠️ No rows updated for key: [${key}]`);
@@ -121,7 +137,9 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, values = []) => {
   } catch (err) {
     await connection.rollback();
     console.error(`${getLongTime()}❌ Update failed for key [${key}]:`, err.message);
-    throw err;
+    
+   throw new Error(`${getLongTime()}❌ Delete failed for [${key}]:`, err.message);
+
   } finally {
     connection.release();
     console.log(`${getLongTime()}🔚 Connection released after update: [${key}]`);
@@ -146,7 +164,33 @@ const removeCachedAndQuery = async (key, mysqlDeleteQury, value) => {
     connection.rollback();
 
     console.error(`${getLongTime()}❌ Delete failed for [${key}]:`, err.message);
-    throw err;
+    throw new Error(`${getLongTime()}❌ Delete failed for [${key}]:`, err.message);
+  } finally {
+    connection.release();
+    console.log(`${getLongTime()}🔚 Connection released after delete: [${key}]`);
+  }
+};
+
+const removeCachedAndQueryById = async (key, productId) => {
+  const connection = await getConnection();
+  if (!connection) throw new Error("❌ MySQL connection failed");
+
+  try {
+    //const query = `DELETE FROM ${tableName} WHERE ${whereField} = ?`;
+
+    const mysqlDeleteQury = `DELETE FROM ${key} WHERE productId=${productId}`;
+    console.log(`${getLongTime()}🗑️ ${mysqlDeleteQury}`);
+
+    const result = await connection.query(mysqlDeleteQury);
+    connection.commit()
+
+    console.log(`${getLongTime()}✅ Delete result: on key ${key} `, result);
+    return result;
+  } catch (err) {
+    connection.rollback();
+
+    console.error(`${getLongTime()}❌ Delete failed for [${key}]:`, err.message);
+    throw new Error(`${getLongTime()}❌ Delete failed for [${key}]:`, err.message);
   } finally {
     connection.release();
     console.log(`${getLongTime()}🔚 Connection released after delete: [${key}]`);
@@ -201,5 +245,5 @@ export default {
   addCachedAndQuery,
   updateCachedOrQuery,
   removeCachedAndQuery,
-  insertWithIncrementRetry,
+  insertWithIncrementRetry,removeCachedAndQueryById
 };

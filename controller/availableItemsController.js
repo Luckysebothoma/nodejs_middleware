@@ -3,7 +3,7 @@
 let keyExist = false;
 import TimeUtils from '../utils/Time.js';
 import ControllerHandler from "../utils/ControllerHandler.js";
-
+ 
 
  import { getConnection } from '../config/db.js';
 
@@ -38,30 +38,19 @@ logRequestDetails(req, "removeAvailableItemsById");
 
 
 try {
-    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
-    const replacements = [cacheKey, productId];
+    const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+    const replacements = [productId];
 
     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
         result.info = cacheKey;
-    if (result.affectedRows > 0) {
-        res.status(200).send({
-            success: true,
-            message: `ID [${productId}] deleted successfully`,
-        });
-    } else {
-        res.status(404).send({
-            success: false,
-            message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
-    }
+    logResponseDetails(req,res,result, cacheKey,200);
+
 
 } catch (error) {
+
     console.error(error);
-    res.status(500).send({
-        success: false,
-        message: "Error occurred while trying to delete.",
-        error,
-    });
+        logResponseDetails(req,res,error, cacheKey,500);
+
 }
   
         
@@ -111,8 +100,7 @@ const getAvailableItems = async (req, res) => {
 const deleteAvailableItems = async(req, res) =>{
         logRequestDetails(req, "deleteAvailableItems");
 
-
-            const productId = req.params.id;
+    const productId = req.body.id;
         console.log(formattedDate() + "ID Pricing to delte: " + productId);
 
     try {

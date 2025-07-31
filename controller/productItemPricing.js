@@ -71,7 +71,7 @@ logRequestDetails(req, "addProductItemPricing");
         }else{
 
         // SQL INSERT statement with ON DUPLICATE KEY UPDATE
-        const query = `
+        const query_db = `
             INSERT INTO productItemPricing (productId, productDescription, itemGroup, itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
@@ -84,18 +84,22 @@ logRequestDetails(req, "addProductItemPricing");
                 groupedCommission = VALUES(groupedCommission)
         `;
 
+         const query = `
+            INSERT INTO productItemPricing (productId, productDescription, itemGroup, itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+
         // Parameterized query with replacements
         const replacements = [productId, productDescription,itemGroup,itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission];
        const connection = await getConnection();
         // Execute the query
         const dbres = await addCachedAndQuery(cacheKey,  query , replacements, connection);
-        logResponseDetails(req, res, dbres, cacheKey, 200)
+        logResponseDetails(req, res, dbres, cacheKey,200)
         
         
         }
     } catch (error) {
-        console.log(error)
-        res.status(404).send({
+        
+        logResponseDetails(req,res,{
             success:false,
             message:"Error in create Student API ",
             error
@@ -107,64 +111,42 @@ logRequestDetails(req, "addProductItemPricing");
 
 const deleteProductItemPricing = async(req, res) =>{
 logRequestDetails(req, "deleteProductItemPricing");
-    const productId  = req.params.id; // Extract student ID from the request URL
-    console.log("removeEstimateById Request Params: ", req.params);
+    const productId = req.body.id;
+     console.log("removeEstimateById Request Params: ", req.params);
     console.log("removeEstimateById Product ID: ", productId);
 
-    try {
-
-
-               console.log(formattedDate() + "ID Pricing to delte: " + productId);
-
-
+                    console.log(formattedDate() + "ID Pricing to delte: " + productId);
         if(!productId){
-            return res.status(404).send({
+            
+                return logResponseDetails(req, res, {
                 success:false,
                 message:"PLease provide student Id => " + productId
            }, cacheKey,500)
-        }else{
-
-
-try {
-    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
-    const replacements = [cacheKey, productId];
-
-    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
-
-    if (result.affectedRows > 0) {
-        res.status(200).send({
-            success: true,
-            message: `ID [${productId}] deleted successfully`,
-       }, cacheKey,200);
-    } else {
-        res.status(404).send({
-            success: false,
-            message: `ID [${productId}] not found in [${cacheKey}]`,
-       }, cacheKey,500);
-    }
-
-} catch (error) {
-    console.error(error);
-    res.status(500).send({
-        success: false,
-        message: "Error occurred while trying to delete.",
-        error,
-   }, cacheKey,500);
-}
-  
-        
-	 
-			
         }
-        
-    } catch (error) {
-        console.log(error)
-        res.status(500).send({
-            success:false,
-            message: "Error in Deleting Student",
-            error
-       }, cacheKey,500)
-    }
+
+                    try {
+                    const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+                    const replacements = [productId];
+
+                    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
+
+
+
+
+                return logResponseDetails(req, res, {
+                            success: true,
+                            message: `ID [${productId}] deleted successfully`,
+                            result
+                    }, cacheKey,200)
+
+                } catch (error) {
+                return logResponseDetails(req, res, {
+                        success: false,
+                        message: "Error occurred while trying to delete.",
+                        error,
+                }, cacheKey,404);
+                }
+
 
 }
 
@@ -236,29 +218,20 @@ logRequestDetails(req, "updateProductItemPricing");
 
 
                     
-        if (!result || (typeof result.affectedRows === 'number' && result.affectedRows === 0) || (typeof result.rowCount === 'number' && result.rowCount === 0)) {
-           
-            return logResponseDetails(req, res, {
-            status: 404,
-            success: false,
-            message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
-            result
-           }, cacheKey,500);
-        } else {
-
-            return logResponseDetails(req, res, {
+return logResponseDetails(req, res, {
             status: 200,
             success: true,
             message: "✅ Available items updated successfully",
             result
-           }, cacheKey,500);
-        } 
+           }, cacheKey,200)
+
+
                 } catch (error) {
                      return logResponseDetails(req, res, {
             status: 404,
             success: false,
             message: '❌ Error updating productItemPricing:', error,
-           }, cacheKey,500);
+           }, cacheKey,404);
                 }
 
             

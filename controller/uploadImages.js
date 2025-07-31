@@ -1,12 +1,13 @@
 import multer, { memoryStorage } from "multer";
-import TimeUtils from '../utils/Time.js';
+
+ 
 import ControllerHandler from "../utils/ControllerHandler.js";
+import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
-import fs from 'fs'
-import path from 'path'
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
+ import { getConnection } from '../config/db.js';
 
-
+ 
 
 const {
   getCachedOrQuery,
@@ -36,12 +37,12 @@ export const uploadImages = async (req, res) => {
   const cacheKey = req.body.table || 'images'; // Default to "images" table
 
   if (!Array.isArray(files) || files.length === 0) {
-    return res.status(400).json({ message: 'No files uploaded' });
+    return logResponseDetails(req, res,{message: 'No files uploaded' }, cacheKey, 400);
   }
 
   // Sanitize table name to avoid SQL injection
   const tableName = cacheKey.replace(/[^a-zA-Z0-9_]/g, '');
-
+ 
   const uploadedResults = [];
 
   try {
@@ -55,7 +56,7 @@ export const uploadImages = async (req, res) => {
 
       console.log(`Uploading image: ${originalname}`);
 
-      const query = `
+      const query_pg= `
         INSERT INTO ${tableName} (filename, mimetype, size, image_data, created_at)
         VALUES ($1, $2, $3, $4, NOW())
         ON CONFLICT (filename) DO UPDATE SET
@@ -65,10 +66,23 @@ export const uploadImages = async (req, res) => {
           created_at = NOW()
       `;
 
+            const query = `
+        INSERT INTO ${cacheKey} (filename, mimetype, size, image_data, created_at)
+        VALUES (?, ?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+          mimetype = VALUES(mimetype),
+          size = VALUES(size),
+          image_data = VALUES(image_data),
+          created_at = NOW()
+      `;
+
       const values = [originalname, mimetype, size, buffer];
 
-      await pgClient.query(query, values);
+      const connection = getConnection(); 
+      const [rsult] = addCachedAndQuery(cacheKey, query, values, connection)
+      //await pgClient.query(query, values);
 
+      logResponseDetails(req, res, rsult, cacheKey, 200)
       uploadedResults.push({
         filename: originalname,
         size,
@@ -79,17 +93,17 @@ export const uploadImages = async (req, res) => {
       console.log(`✅ Uploaded: ${originalname}`);
     }
 
-    return res.status(200).json({
-      message: 'Images uploaded successfully',
-      uploaded: uploadedResults
-    });
+ //   return res.status(200).json({
+ //     message: 'Images uploaded successfully',
+ //     uploaded: uploadedResults
+ //   });
 
   } catch (error) {
     console.error('❌ Error uploading images:', error);
-    return res.status(500).json({
+    return logResponseDetails(req, res, {
       message: 'Image upload failed',
       error: error.message
-    });
+    },cacheKey, 500);
   }
 };
 

@@ -36,31 +36,23 @@ logRequestDetails(req, "removeEstimateById");
 
 
 try {
-    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
-    const replacements = [cacheKey, productId];
+    const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+    const replacements = [productId];
 
      const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
         result.info = cacheKey;
 
-    if (result.affectedRows > 0) {
-        res.status(200).send({
+    return logResponseDetails(req, res, {
             success: true,
             message: `ID [${productId}] deleted successfully`,
-        });
-    } else {
-        res.status(404).send({
-            success: false,
-            message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
-    }
+        }, cacheKey,200)
 
 } catch (error) {
-    console.error(error);
-    res.status(500).send({
+   return logResponseDetails(req, res, {
         success: false,
         message: "Error occurred while trying to delete.",
         error,
-    });
+},cacheKey,200)
 }
  
         
@@ -94,7 +86,7 @@ logRequestDetails(req, "getEstimates");
   try {
 
     const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-        logResponseDetails(req, res, data, cacheKey, 200);
+        return logResponseDetails(req, res, data, cacheKey, 200);
     
     //res.status(200).send(data);
   } catch (error) {
@@ -146,7 +138,7 @@ logRequestDetails(req,cacheKey);
         }else{
 
         // SQL INSERT statement with ON DUPLICATE KEY UPDATE for MySQL
-        const query = `
+        const query_old = `
             INSERT INTO estimates (productId, estimatedSelling, actualSelling, lastUpdated)
             VALUES (?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
@@ -155,11 +147,14 @@ logRequestDetails(req,cacheKey);
                 lastUpdated = VALUES(lastUpdated)
         `;
 
+         const query = `
+            INSERT INTO estimates (productId, estimatedSelling, actualSelling, lastUpdated)
+            VALUES (?, ?, ?, ?)`;
         // Parameterized query with replacements
         const replacements = [productId, estimatedSelling,actualSelling,lastUpdated];
 
         // Execute the query
-        addCachedAndQuery("estimates",query,query,replacements);
+        addCachedAndQuery("estimates",query,replacements);
         
         
         }
@@ -180,8 +175,9 @@ logRequestDetails(req,cacheKey);
 //deletins
 const deleteEstimates = async(req, res) =>{
 logRequestDetails(req, "deleteEstimates");
-
-    const productId  = req.params.id; // Extract student ID from the request URL
+            const id = req.body;
+//            const productId = req.params.id;
+ const productId = id;
         console.log(formattedDate() + "ID Pricing to delte: " + productId);
 
     try {
@@ -213,7 +209,7 @@ logRequestDetails(req, "deleteEstimates");
      
                     success:true,
                     message:"ID [" + productId +"] DELETED Successfully"
-                }, cacheKey, 500)
+                }, cacheKey, 200)
 
 
 

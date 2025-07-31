@@ -72,7 +72,7 @@ const getProductList = async (req, res) => {
 //        data,
 //        message: '🛒 Product list retrieved successfully',
 //    });
-    logResponseDetails(req, res, data, cacheKey,200);
+    return logResponseDetails(req, res, data, cacheKey,200);
 
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
@@ -319,8 +319,7 @@ const deleteProduct = async(req, res) =>{
     logRequestDetails(req, "deleteProduct");
     try {
 
-        const productId = req.params.id;
-
+            const productId = req.params.id;
         console.log("Product Id: "+  productId);
         if(!productId){
          return logResponseDetails(req, res, {
@@ -332,18 +331,18 @@ const deleteProduct = async(req, res) =>{
 
 
 try {
-    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
-    const replacements = [cacheKey, productId];
+    const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+    const replacements = [productId];
 
     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
     if (result.affectedRows > 0) {
-        logResponseDetails(req,res,{
+        return logResponseDetails(req,res,{
             success: true,
             message: `ID [${productId}] deleted successfully`,
        }, cacheKey,200);
     } else {
-       logResponseDetails(req,res,{
+       return logResponseDetails(req,res,{
             success: false,
             message: `ID [${productId}] not found in [${cacheKey}]`,
        }, cacheKey,500);
@@ -351,7 +350,7 @@ try {
 
 } catch (error) {
     console.error(error);
-    logResponseDetails(req,res,{
+    return logResponseDetails(req,res,{
         success: false,
         message: "Error occurred while trying to delete.",
         error,
@@ -420,7 +419,7 @@ logRequestDetails(req, "addProduct");
         // Execute the query
         const dbres = await addCachedAndQuery(cacheKey,  query , replacements, connection);
         
-        logResponseDetails(req, res, dbres, cacheKey, 200)
+        return logResponseDetails(req, res, dbres, cacheKey, 200)
         }
 
 

@@ -3,15 +3,16 @@
  * Returns formatted time strings in different levels of detail
  */
 
-/**
- * Returns short time format (HH:MM)
- * @param {Date} [date] - Date object, defaults to current time
- * @returns {string} Time in HH:MM format
- */
-function getShortTime() {
-  const date = new Date()
+// timeUtils.js
 
-  return date.toLocaleTimeString('en-US', {
+const defaultTimezone = 'Africa/Johannesburg';
+
+/**
+ * Returns short time format (HH:MM) in Africa/Johannesburg timezone
+ */
+function getShortTime(date = new Date()) {
+  return date.toLocaleTimeString('en-ZA', {
+    timeZone: defaultTimezone,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false
@@ -19,12 +20,11 @@ function getShortTime() {
 }
 
 /**
- * Returns medium time format (HH:MM:SS)
- * @param {Date} [date] - Date object, defaults to current time
- * @returns {string} Time in HH:MM:SS format
+ * Returns medium time format (HH:MM:SS) in Africa/Johannesburg timezone
  */
 function getMidTime(date = new Date()) {
-  return date.toLocaleTimeString('en-US', {
+  return date.toLocaleTimeString('en-ZA', {
+    timeZone: defaultTimezone,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -33,12 +33,11 @@ function getMidTime(date = new Date()) {
 }
 
 /**
- * Returns long time format (HH:MM:SS AM/PM with timezone)
- * @param {Date} [date] - Date object, defaults to current time
- * @returns {string} Time in full format with AM/PM and timezone
+ * Returns long time format (HH:MM:SS AM/PM with timezone) in Africa/Johannesburg
  */
 function getLongTime(date = new Date()) {
-  return date.toLocaleTimeString('en-US', {
+  return date.toLocaleTimeString('en-ZA', {
+    timeZone: defaultTimezone,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -46,30 +45,144 @@ function getLongTime(date = new Date()) {
     timeZoneName: 'short'
   });
 }
-function formattedDate() {
+
+/**
+ * Returns full formatted date-time string in HH:MM:SS-DD-MM-YYYY (Africa/Johannesburg)
+ */
+function formattedDate(date = new Date()) {
   const options = {
-    timeZone: "Africa/Johannesburg",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
+    timeZone: defaultTimezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour12: false
   };
 
-  const formatter = new Intl.DateTimeFormat("en-ZA", options);
-  const parts = formatter.formatToParts(new Date());
-  const time = `${parts.find(p => p.type === "hour").value}:${parts.find(p => p.type === "minute").value}:${parts.find(p => p.type === "second").value}`;
-  const date = `${parts.find(p => p.type === "day").value}-${parts.find(p => p.type === "month").value}-${parts.find(p => p.type === "year").value}`;
-  
-  return `${time}-${date}`;
+  const formatter = new Intl.DateTimeFormat('en-ZA', options);
+  const parts = formatter.formatToParts(date);
+
+  const getPart = type => parts.find(p => p.type === type)?.value || '00';
+
+  const time = `${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
+  const dateStr = `${getPart('day')}-${getPart('month')}-${getPart('year')}`;
+
+  return `${time}-${dateStr}`;
 }
 
-
-// Export functions for use in other modules
 export default {
   getShortTime,
   getMidTime,
   getLongTime,
   formattedDate
 };
+/*
+
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+// dateTimeService.js
+const { DateTimeFormat } = Intl;
+
+class DateTimeService {
+  constructor(timezone = 'Africa/Johannesburg') {
+    this.defaultTimezone = timezone;
+  }
+
+  toDate(value) {
+    if (value instanceof Date) return value;
+    if (typeof value === 'number') return new Date(value);
+    if (typeof value === 'string') {
+      const date = new Date(value);
+      return isNaN(date.getTime()) ? null : date;
+    }
+    return null;
+  }
+
+  normalizeDate(value) {
+    const date = this.toDate(value);
+    return date ? date : new Date();
+  }
+
+  formatDate(value, format = 'dd-mm-yyyy', timezone = this.defaultTimezone) {
+    const date = this.normalizeDate(value);
+
+    const formatter = new DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    const parts = formatter.formatToParts(date);
+    const partMap = {};
+    for (const part of parts) {
+      if (part.type !== 'literal') {
+        partMap[part.type] = part.value;
+      }
+    }
+
+    const year = partMap.year;
+    const month = partMap.month;
+    const day = partMap.day;
+    const hour = partMap.hour;
+    const minute = partMap.minute;
+    const second = partMap.second;
+
+    switch (format) {
+      case 'dd-mm-yyyy':
+        return `${day}-${month}-${year}`;
+      case 'mysql':
+        return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+      case 'full':
+        const fullDate = new DateTimeFormat('en-US', {
+          timeZone: timezone,
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }).format(date);
+        return `${fullDate} ${hour}:${minute}:${second}`;
+      default:
+        return date.toISOString();
+    }
+  }
+
+  formatPartial(value, part = 'date', timezone = this.defaultTimezone) {
+    const date = this.normalizeDate(value);
+
+    const formatter = new DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    const parts = formatter.formatToParts(date);
+    const result = {};
+    for (const part of parts) {
+      if (part.type !== 'literal') result[part.type] = part.value;
+    }
+
+    if (part === 'date') {
+      return `${result.year}-${result.month}-${result.day}`;
+    }
+
+    return `${result.hour}:${result.minute}:${result.second}`;
+  }
+}
+
+module.exports = new DateTimeService();
+
+
+*/

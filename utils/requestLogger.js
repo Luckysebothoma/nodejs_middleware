@@ -3,12 +3,18 @@ import { publishToQueue, publishToQueueAndPrometheus } from '../utils/rabbitMQPu
 import { matchEndpointLabel } from './endpointLogMap.js';
 import {buildTelegrafPayload} from "../data_transformer/telegraf_json.js"
  
+
+
+ import TimeUtils from '../utils/Time.js';
+import { DATE } from 'sequelize';
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
 export const logRequestDetails = async (req, manualLabel = '', mode = 'both') => {
   const startHrTime = process.hrtime();
-  const timestamp = new Date().toISOString();
-  const currentTimeStamp = new Date();
+  const isoTimestamp = formattedDate(new Date())
+   const currentTimeStamp = new Date().toISOString();;
   const dynamicLabel = matchEndpointLabel(req.method, req.path) || manualLabel || '🗂️ Unknown Endpoint';
-  const isoTimestamp = new Date(timestamp).toISOString();
+  
  
   const shortLog = {
     time: isoTimestamp,
@@ -48,13 +54,14 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
       method: req.method,
       path: req.path,
       label: dynamicLabel,
+      fullLog
     },
     fields: {
       duration_ms: parseFloat(durationMs),
       ip: req.ip,
       hostname: req.hostname,
     },
-    timestamp: currentTimeStamp.getTime() * 1e6,
+    timestamp: getLongTime(new Date()),
   });
 
   if (mode === 'full' || mode === 'both') {
@@ -85,7 +92,7 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
 
  export const logResponseDetails = async (req, res, payload, manualLabel = '', status=500 ,mode = 'both') => {
   const startHrTime = process.hrtime();
-  const now = Date.now();
+  const now = new Date();
   const isoTimestamp = new Date(now).toISOString();
   const dynamicLabel = matchEndpointLabel(req.method, req.path) || manualLabel || '🗂️ Unknown Endpoint';
   const Global_Success_Status = false
@@ -112,7 +119,7 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
   }else{
 
 
-     apiResponse = {
+    const apiResponse = {
     success:false,
     message:`Failed`,
     data:JSON.stringify(payload),
@@ -133,8 +140,8 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
   const durationMs = +(sec * 1000 + nano / 1e6).toFixed(3);
   const durationSeconds = durationMs / 1000;
 
-  const dataLength = Array.isArray(data) ? data.length : 0;
-  const payloadLength= payload.length;
+ // const dataLength = Array.isArray(data) ? data.length : 0;
+ // const payloadLength= payload.length;
   const totalProfit = Array.isArray(data)
 
 //    ? data.reduce((sum, item) => sum + (parseFloat(item.productProfit) || 0), 0)
@@ -152,8 +159,9 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
       success: apiResponse.success ? 1 : 0,
       message_length: message.length || 0,
       response_size: Buffer.byteLength(JSON.stringify(Global_apiResponse)),
-      data_length: payloadLength,
+      data_length:  JSON.stringify(payload),
       data_payload:data,
+      payload:  JSON.stringify(payload),
       duration_ms: durationMs,
       payloadSize: payload.length,
       duration:durationMs,
@@ -171,8 +179,7 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
       method: req.method,
       endpoint: req.path,
       httpsStatus: status,
-      items: payloadLength,
-      payloadSize: payload.length,
+      response_data:  JSON.stringify(payload),
       duration:durationMs,
       label: dynamicLabel,
       time: isoTimestamp,

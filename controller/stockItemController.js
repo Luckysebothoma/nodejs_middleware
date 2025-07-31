@@ -43,10 +43,9 @@ const deleteStock = async(req, res) =>{
     logRequestDetails(req, "deleteStock");
     try {
 
-        const productId = req.params.id;
-
+               const productId = req.body.id;
         if(!lastUpdated){
-            return res.status(404).send({
+return logResponseDetails(req,res,{
                 success:false,
                 message:"PLease provide student Id => " + productId
             })
@@ -54,26 +53,19 @@ const deleteStock = async(req, res) =>{
 
 
 try {
-    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
-    const replacements = [cacheKey, productId];
+    const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+    const replacements = [productId];
 
     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
-    if (result.affectedRows > 0) {
-        res.status(200).send({
+return logResponseDetails(req,res,{
             success: true,
             message: `ID [${productId}] deleted successfully`,
-        });
-    } else {
-        res.status(404).send({
-            success: false,
-            message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
-    }
+            result
+        },cacheKey,200)
 
 } catch (error) {
-    console.error(error);
-    res.status(500).send({
+return logResponseDetails(req,res,{
         success: false,
         message: "Error occurred while trying to delete.",
         error,
@@ -245,30 +237,22 @@ logRequestDetails(req, "removeStockedItems");
 
 
 try {
-    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
-    const replacements = [cacheKey, productId];
+    const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+    const replacements = [productId];
 
     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
-    if (result.affectedRows > 0) {
-        res.status(200).send({
+           return logResponseDetails(req,res,{
             success: true,
             message: `ID [${productId}] deleted successfully`,
-        });
-    } else {
-        res.status(404).send({
-            success: false,
-            message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
-    }
+        },cacheKey,200);
 
 } catch (error) {
-    console.error(error);
-    res.status(500).send({
+return logResponseDetails(req,res,{
         success: false,
         message: "Error occurred while trying to delete.",
         error,
-    });
+    },cacheKey, 500);
 }
   
         
@@ -277,8 +261,7 @@ try {
         }
         
     } catch (error) {
-        console.log(error)
-        res.status(500).send({
+return logResponseDetails(req,res,{
             success:false,
             message: "Error in Deleting Student",
             error

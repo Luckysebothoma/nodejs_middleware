@@ -58,7 +58,7 @@ router.get("/getEstimates", getEstimates);
 router.put("/updateEstimates", updateEstimates);
 router.delete('/removeEstimateById/:id', removeEstimateById)
 
-router.delete("/deleteProductbyId", deleteItem);
+router.delete("/deleteProductbyId", deleteItem); 
 
 // Upload Image
 
@@ -120,7 +120,9 @@ router.delete('/removeAvailableItemsById/:id', removeAvailableItemsById)
 router.get('/getProductList', getProductList);
 router.get('/getProductBYId/:id', getProductByID);
 router.put('/updateProductList', updateProduct); 
+//router.delete('/deleteProduct/:id', deleteProduct);
 router.delete('/deleteProduct/:id', deleteProduct);
+
 router.post('/addProduct', addProduct);
 router.delete('purgeProduct/:id', purgingProduct);
 

@@ -30,7 +30,7 @@ logRequestDetails(req, "getSodEodList");
     res.status(200).send(data);
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
-    res.status(500).send({
+     return logResponseDetails(req,res,{
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
@@ -67,11 +67,11 @@ logRequestDetails(req, "addSodEodList");
 
         console.log(error)
         let errorMessage = error.message || 'Unknown MySQL error';
-        res.status(404).send({
+          return logResponseDetails(req,res,{
             success:false,
             message:"Error in create addSodEodList API ",
             error: errorMessage
-       }, cacheKey,500)
+       }, cacheKey,404)
         
 
     }else{
@@ -99,11 +99,11 @@ logRequestDetails(req, "addSodEodList");
          } catch (error) {
              console.log(error)
              let errorMessage = error.message || 'Unknown MySQL error';
-             res.status(404).send({
+               return logResponseDetails(req,res,{
                  success:false,
                  message:"Error in create Student API ",
                  error: errorMessage
-            }, cacheKey,500)
+            }, cacheKey,404)
              
          }
      
@@ -123,54 +123,33 @@ logRequestDetails(req, "getSodEodItems");
         //console.log('Cache miss: Querying database');
         const dbDataResult = await getCachedOrQuery(cacheKey,query, query);
 
-        if (!dbDataResult) { 
-            return res.status(404).send({
+return logResponseDetails(req,res,{
                 success: false,
                 message: "Resource not found"
-           }, cacheKey,500);
-        } else if (!dbDataResult.length || dbDataResult.length === 0) {
-            return logResponseDetails(req,res,{
-                success: true,
-                data: [],
-                message: "No data available"
            }, cacheKey,200);
-        }else{
-            
-            //const objectsOnly = dbData.filter(item => typeof item === 'object' && !Array.isArray(item));
-            // Cache the data in Redis (set it for 1 hour)
-//            await setData(cacheKey, objectsOnly, 3600); // Cache for 1 hour
-            //await setDataWithNoExpiry(cacheKey, dbDataResult);
-         //   await setDataWithExpiry(cacheKey, dbDataResult);
-            // Send the filtered data to the client
-             return res.status(200).send(dbDataResult);
-            
-        }
-
 
     } catch (error) {
-        console.log(error)
-        res.status(500).send({
+return logResponseDetails(req,res,{
             success:false,
             message:"Error in getting all" + error,
-            error
-       }, cacheKey,500)
+        }, cacheKey,500)
     }
 
 
 }
 
-const removeSodEodById = async(req, res) =>{
+const removeSodEodByIdSS = async(req, res) =>{
 
     logRequestDetails(req, "removeSodEodById");
     try {
 
-        const productId = req.params.id;
-
+             const productId = req.body.id;
+ 
         if(!productId){
-            return res.status(404).send({
+             return logResponseDetails(req,res,{
                 success:false,
                 message:"PLease provide student Id => " + productId
-           }, cacheKey,500)
+           }, cacheKey,404)
         }else{
 
 
@@ -178,23 +157,14 @@ try {
     const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
     const replacements = [productId];
 
-    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, mysqlQuery, replacements);
-
-    if (result && (result.affectedRows > 0 || result.rowCount > 0)) {
-        logResponseDetails(req,res,{
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
+       return logResponseDetails(req,res,{
             success: true,
             message: `ID [${productId}] deleted successfully`,
        }, cacheKey,200);
-    } else {
-        res.status(404).send({
-            success: false,
-            message: `ID [${productId}] not found in [${cacheKey}]`,
-       }, cacheKey,500);
-    }
 
 } catch (error) {
-    console.error(error);
-    res.status(500).send({
+    return logResponseDetails(req,res,{
         success: false,
         message: "Error occurred while trying to delete.",
         error,
@@ -208,7 +178,7 @@ try {
         
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+         return logResponseDetails(req,res,{
             success:false,
             message: "Error in Deleting Student",
             error
@@ -216,6 +186,39 @@ try {
     }
 
 }
+
+const removeSodEodById = async (req, res) => {
+     logRequestDetails(req, "removeSodEodById");
+
+            const productId = req.params.id;
+
+    if (!productId) {
+        return logResponseDetails(req, res, {
+            success: false,
+            message: "Please provide student Id",
+        }, cacheKey, 400); // 400 = Bad Request
+    }
+
+    try {
+        const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+        const replacements = [productId];
+
+        const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
+
+        return logResponseDetails(req, res, {
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+        }, cacheKey, 200);
+    } catch (error) {
+        return logResponseDetails(req, res, {
+            success: false,
+            message: "Error occurred while trying to delete.",
+            error,
+        }, cacheKey, 500);
+    }
+};
+
+
 const deleteSodEodItems = async(req, res) =>{
     logRequestDetails(req, "deleteSodEodItems");
     try {
@@ -224,33 +227,33 @@ const deleteSodEodItems = async(req, res) =>{
         console.log(formattedDate() + "ID Pricing to delte: " + productId);
 
         if(!productId){
-            return res.status(404).send({
+              return logResponseDetails(req,res,{
                 success:false,
                 message:"PLease provide student Id => " + productId
-           }, cacheKey,500)
+           }, cacheKey,404)
         }else{
 
 try {
-    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
-    const replacements = [cacheKey, productId];
+    const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
+    const replacements = productId;
 
     const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
     if (result.affectedRows > 0) {
-        logResponseDetails(req,res,{
+        return logResponseDetails(req,res,{
             success: true,
             message: `ID [${productId}] deleted successfully`,
        }, cacheKey,200);
     } else {
-        res.status(404).send({
+          return logResponseDetails(req,res,{
             success: false,
             message: `ID [${productId}] not found in [${cacheKey}]`,
-       }, cacheKey,500);
+       }, cacheKey,404);
     }
 
 } catch (error) {
-    console.error(error);
-    res.status(500).send({
+    
+     return logResponseDetails(req,res,{
         success: false,
         message: "Error occurred while trying to delete.",
         error,
@@ -264,7 +267,7 @@ try {
         
     } catch (error) {
         console.log(error)
-        res.status(500).send({
+         return logResponseDetails(req,res,{
             success:false,
             message: "Error in Deleting Student",
             error
@@ -292,7 +295,7 @@ logRequestDetails(req, "updateSodEodItems");
             date === undefined || date === null ||
             productName === undefined || productName === null) {
                 
-            return res.status(500).send({
+            return  logResponseDetails(req,res,{
                 success:false,
                 message:"PLease Provide all fields"
            }, cacheKey,500)
@@ -344,11 +347,11 @@ logRequestDetails(req, "updateSodEodItems");
 
     } catch (error) {
         console.log(error)
-        res.status(404).send({
+          return logResponseDetails(req,res,{
             success:false,
             message:"Error in create Student API ",
             error
-       }, cacheKey,500)
+       }, cacheKey,404)
         
     }
 
@@ -375,11 +378,11 @@ logRequestDetails(req, "addSodEodItems");
 
         console.log(error)
         let errorMessage = error.message || 'Unknown MySQL error';
-        res.status(404).send({
+          return logResponseDetails(req,res,{
             success:false,
             message:"Error in create Student API ",
             error: errorMessage
-       }, cacheKey,500)
+       }, cacheKey,404)
         
 
     }else{
@@ -406,13 +409,13 @@ logRequestDetails(req, "addSodEodItems");
             
             
             if(!data){
-                res.status(404).send({
+                  return logResponseDetails(req,res,{
                     success:false,
                     message:"Error: CNNOT INSERT DATA TO CART DUE TO A ERROR",
      
-               }, cacheKey,500)
+               }, cacheKey,404)
         }else{
-                logResponseDetails(req,res,{
+                return logResponseDetails(req,res,{
                     success:true, 
                     message:"Successfully Added New SodEod",
                }, cacheKey,200)
@@ -421,7 +424,7 @@ logRequestDetails(req, "addSodEodItems");
      
          } catch (error) {
 
-            logResponseDetails(req,res,{
+            return logResponseDetails(req,res,{
                 error,
                 success:false,
                  message:"Error in create Student API ",

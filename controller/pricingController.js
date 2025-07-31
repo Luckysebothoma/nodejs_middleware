@@ -251,8 +251,7 @@ try {
 const deletePricing = async(req, res) =>{
     logRequestDetails(req, "deletePricing");
 
-    const productId  = req.params.id; // Extract student ID from the request URL
-
+            const productId = req.params.id;
     try {
 
                 console.log(formattedDate() + "ID Pricing to delte: " + productId);

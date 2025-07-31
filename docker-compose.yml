@@ -26,8 +26,8 @@ volumes:
     external: true
 
 services: 
-  api:
-    container_name: sweety-api-container
+  sweety-api:
+    container_name: sweety-api
     build:
       context: .
       dockerfile: Dockerfile
