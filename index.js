@@ -78,13 +78,9 @@ app.use(express.json());
 
 const allowedOrigins = [
   "https://192.168.0.140:4200",
-  "https://192.168.0.123:4200",
-  "https://linux-hp.local:4200",
-  "https://linux-acer.local:4200",
-  "https://sweety_acer.justdo-it.uk",
+  "https://192.168.0.140:4210",
   "https://sweety.justdo-it.uk",
-  "https://cli-app-angular-sweety-sweet.pages.dev",
-  "https://sweety-sweet-app.lucky-sebothoma-3.workers.dev"
+  "https://sweety-dev.justdo-it.uk",
 ];
 
 

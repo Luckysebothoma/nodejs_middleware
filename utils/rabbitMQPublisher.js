@@ -67,7 +67,7 @@ export const connectRabbitMQ = async () => {
 
 
 
-export const publishToQueue = async (queueName, data) => {
+export const publishToQueue = async (queueName, data) => { 
 
   try {
     if (!isConnected || !channel) {

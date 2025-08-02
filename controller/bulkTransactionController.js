@@ -530,7 +530,19 @@ connection.commit(); // Lats Operation to commit to database
 
 }
 
-export const deleteAllProductData = async (productId) => {
+export const deleteAllProductDataS = async (req, res)=> { 
+
+  const productId = req.params.id;
+
+  if(!productId){
+    logResponseDetails(req,res,
+      {
+        success: false,
+        message: "Missing product List value for Deleing all products"
+      },"deleteAllProductData",500
+    )
+
+  }
   const dataTargets = [
     { key: "productPricing", table: "productPricing" },
     { key: "availableItems", table: "availableItems" },
@@ -545,18 +557,21 @@ export const deleteAllProductData = async (productId) => {
   for (const { key, table } of dataTargets) {
    // const response = await deleteRedisAndMySQL(productId, key, table);
       try {
-    conn = await mysqlPool.getConnection();
-      const query = `DELETE FROM \`${table}\` WHERE productId = ?`;
+       const query = `DELETE FROM \`${table}\` WHERE productId = ?`;
   const values = [productId];
 
+  console.log(`Now deleting ${productId} \n query: ${query} \n values: ${values} `)
     const mysqlResult = removeCachedAndQuery(key,query,values);
 
 
     if (mysqlResult.affectedRows > 0) {
      // const redisDelResult = await redisClient.del(redisKey);
       console.log(`🗑️ MySQL + Redis delete complete. Redis deleted: ${mysqlResult > 0}`);
+      return logResponseDetails(req, res, { success: true, message: mysqlResult }, "deleteAllProductData", 200);
+
     } else {
         //    const redisDelResult = await redisClient.del(redisKey);
+    return logResponseDetails(req, res, { success: true, message: mysqlResult }, "deleteAllProductData", 200);
 
       console.warn(`⚠️ No record found in MySQL table "${key}" for productId: ${productId}`);
     }
@@ -564,16 +579,84 @@ export const deleteAllProductData = async (productId) => {
 
   } catch (err) {
     console.error(`🔥 Error during deleteRedisAndMySQL: ${err.message}`);
-    return logResponseDetails(req, res, { success: false, message: err.message }, "purge", 400);
+    return logResponseDetails(req, res, { success: false, message: err.message }, "deleteAllProductData", 400);
 
   } finally {
-    if (conn) conn.release();
-    // Do NOT call redisClient.release() unless it's a pooled client (like ioredis cluster)
+     // Do NOT call redisClient.release() unless it's a pooled client (like ioredis cluster)
     // If redisClient is a regular Redis instance, just leave it open (or close it when app shuts down)
   }
 
   }
 };
+
+export const deleteAllProductData = async (req, res) => {
+  const productId = req.params.id;
+
+  if (!productId) {
+    return logResponseDetails(
+      req,
+      res,
+      { success: false, message: "Missing product ID for deleting all product data" },
+      "deleteAllProductData",
+      400
+    );
+  }
+
+  const dataTargets = [
+    { key: "productPricing", table: "productPricing" },
+    { key: "availableItems", table: "availableItems" },
+    { key: "cartList", table: "cartList" },
+    { key: "estimates", table: "estimates" },
+    { key: "productItemPricing", table: "productItemPricing" },
+    { key: "productList", table: "productList" },
+    { key: "sodEodItems", table: "sodEodItems" },
+    { key: "stockItems", table: "stockItems" },
+  ];
+
+  let deleteResults = [];
+
+  for (const { key, table } of dataTargets) {
+    const query = `DELETE FROM \`${table}\` WHERE productId = ?`;
+    const values = [productId];
+
+    try {
+      console.log(`🔄 Deleting from ${table} WHERE productId=${productId}`);
+      const mysqlResult = await removeCachedAndQuery(key, query, values); // ✅ Use await
+
+      if (mysqlResult?.affectedRows > 0) {
+        console.log(`✅ Deleted from ${table}: ${mysqlResult.affectedRows} rows`);
+      } else {
+        console.warn(`⚠️ No matching rows in ${table} for productId: ${productId}`);
+      }
+
+      deleteResults.push({ table, affectedRows: mysqlResult.affectedRows || 0 });
+
+    } catch (err) {
+      console.error(`🔥 Error deleting from ${table}: ${err.message}`);
+      return logResponseDetails(
+        req,
+        res,
+        { success: false, message: `Error deleting from ${table}: ${err.message}` },
+        "deleteAllProductData",
+        500
+      );
+    }
+  }
+
+  return logResponseDetails(
+    req,
+    res,
+    {
+      success: true,
+      message: "Deletion completed across all tables",
+      results: deleteResults,
+    },
+    "deleteAllProductData",
+    200
+  );
+};
+
+
 export const deleteRedisAndMySQL = async (productId, redisKey, mysqlTable) => {
 
 

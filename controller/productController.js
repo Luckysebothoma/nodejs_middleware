@@ -319,7 +319,7 @@ const deleteProduct = async(req, res) =>{
     logRequestDetails(req, "deleteProduct");
     try {
 
-            const productId = req.params.id;
+    const productId = req.body.id;
         console.log("Product Id: "+  productId);
         if(!productId){
          return logResponseDetails(req, res, {
