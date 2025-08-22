@@ -4,6 +4,10 @@ import { getConnection } from '../config/db.js';
 import TimeUtils from './Time.js';
 const { getLongTime } = TimeUtils;
 import { logRequestDetails, logResponseDetails } from './requestLogger.js';
+import redisClient from '../config/redisClient.js';
+
+const  {connectRedis, cacheSet, cacheGet, cacheDelete, cacheExists, refreshKey} = redisClient;
+
 // Correct way for default export
 //import redisCache from '../config/redisClient.js';
 
@@ -30,9 +34,13 @@ const getCachedOrQuery = async (key, mysqlQuery) => {
       console.log(`❌ Cache ${key} Missed ...!`);
     }
 */
+
+ 
     console.log(`${getLongTime()}🔍 Executing SELECT for key [${key}]`);
 
+
     const [rows] = await connection.query(mysqlQuery); // ✅ FIXED
+    cacheSet(key,[rows])
 
     if (!rows || rows.length === 0) {
 
@@ -84,9 +92,13 @@ const addCachedAndQuery = async (key, mysqlInsertQuery, values = [], _connection
       mysqlInsertQuery,
       values
     });
+
+    refreshKey();
+
     const result = await connection.query(mysqlInsertQuery, values);
 
     console.log(`${getLongTime()}✅ INSERT successful on key ${key}:`);
+    cacheSet(key,[result])
     return result;
     
   } catch (err) {
@@ -130,6 +142,11 @@ const updateCachedOrQuery = async (key, mysqlUpdateQuery, values = []) => {
       console.warn(`${getLongTime()}⚠️ No rows updated for key: [${key}]`);
     } else {
       console.log(`${getLongTime()}✅ Updated ${result.affectedRows} rows on key ${key}`);
+
+      refreshKey();
+
+      cacheSet(key,[result])
+
     }
 
     await connection.commit();
@@ -155,8 +172,11 @@ const removeCachedAndQuery = async (key, mysqlDeleteQury, value) => {
     //const query = `DELETE FROM ${tableName} WHERE ${whereField} = ?`;
 
     console.log(`${getLongTime()}🗑️ Deleting from [${key}] where ${value} = ${value}`);
+
     const result = await connection.query(mysqlDeleteQury, value);
-    connection.commit()
+
+    connection.commit();
+    refreshKey();
 
     console.log(`${getLongTime()}✅ Delete result: on key ${key} `, result);
     return result;
@@ -183,7 +203,8 @@ const removeCachedAndQueryById = async (key, productId) => {
 
     const result = await connection.query(mysqlDeleteQury);
     connection.commit()
-
+    refreshKey();
+    
     console.log(`${getLongTime()}✅ Delete result: on key ${key} `, result);
     return result;
   } catch (err) {

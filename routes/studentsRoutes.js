@@ -27,7 +27,7 @@ import productItemPricingController from "../controller/productItemPricing.js";
 const { addProductItemPricing, getProductItemPricingList, updateProductItemPricing, createProductItemPricing, deleteProductItemPricing } = productItemPricingController;
 
 import bulkTransactionController, { deleteAllProductData } from "../controller/bulkTransactionController.js";
-const { addNewCandy, addNewCandy_with_image, deleteItem, updateProducts_Batch } = bulkTransactionController;
+const { addNewCandy, addNewCandy_with_image, deleteItem, updateProducts_Batch , addListOfSodEod} = bulkTransactionController;
 
 import uploadImagesController from "../controller/uploadImages.js";
 const { uploadImages, uploadMiddleware } = uploadImagesController;
@@ -62,6 +62,9 @@ router.delete("/deleteProductbyId", deleteItem);
 
 
 router.delete("/deleteAllProductData/:id", deleteAllProductData);
+
+
+router.post("/addListOfSodEod", addListOfSodEod)
 
 // Upload Image
 

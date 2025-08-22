@@ -6,12 +6,47 @@ import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js
 
 
 const router = Router();
-const upload = multer();
+//const upload = multer();
 
 // Redis client setup
 import { get, setEx } from "../config/redisClient";
 //redisClient.connect(); // Ensure Redis is connected
+const upload = multer({ dest: 'uploads/' }); // Will store file temporarily
 
+router.post("/images/temp", upload.single("file"), async (req, res) => {
+ 
+logRequestDetails(req, "imageUpload");
+
+  const key = req.query.key;
+  if (!req.file || !key) {
+    logResponseDetails(req,res,{
+      message: "No File to updload or missing key"
+    }, "imageUpload",200)
+  }
+    
+ 
+  const imageData = {
+    buffer: readFileSync(req.file.path).toString("base64"),
+    mimetype: req.file.mimetype,
+    originalname: req.file.originalname
+  };
+
+
+    // Remove temp file from disk
+  fs.unlinkSync(req.file.path);
+
+
+  try {
+    //await set(key, JSON.stringify(imageData));
+   cacheSet(imageData.originalname,imageData)
+    logResponseDetails(req,res,{ message: "Image stored in Redis", imageData:imageData, key });
+  } catch (err) {
+    logResponseDetails(req,res, {error: "Redis error" });
+  }
+
+
+ 
+});
 router.get('/temp/:id', async (req, res) => {
 
   logRequestDetails(req, "imageController");

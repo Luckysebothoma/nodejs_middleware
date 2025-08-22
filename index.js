@@ -16,8 +16,9 @@ import { auth } from "express-oauth2-jwt-bearer";
 import path from 'path';
 import { fileURLToPath } from 'url';
 // Only use default import and destructuring
+import jwt from "jsonwebtoken";
  
-
+ import { authMiddleware } from './utils/authMiddleware.js';
 import { logRequestDetails, logResponseDetails } from './utils/requestLogger.js';
 
 import redisClient from './config/redisClient.js';
@@ -27,6 +28,9 @@ const  {connectRedis, cacheSet, cacheGet, cacheDelete, cacheExists} = redisClien
  import { uploadImage } from './controller/uploadController.js';
 
 import ControllerHandler from "./utils/ControllerHandler.js"
+
+import {trackToken} from "./config/trackToken.js"
+
 const {
   getCachedOrQuery,
   addCachedAndQuery,
@@ -81,6 +85,7 @@ const allowedOrigins = [
   "https://192.168.0.140:4210",
   "https://sweety.justdo-it.uk",
   "https://sweety-dev.justdo-it.uk",
+  
 ];
 
 
@@ -95,9 +100,9 @@ app.use(cors({
     }
   }, 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'x-user-id'],
   credentials: true, // if you're using cookies or Auth headers
-  optionsSuccessStatus: 200
+   optionsSuccessStatus: 200
 }));
 // Prometheus metrics
 //const register = new Registry();
@@ -105,53 +110,93 @@ app.use(cors({
 
 app.use((req, res, next) => {
   const startTime = Date.now();
+  const userId = req.headers["x-user-id"] || "unknown";
+  const correlationId = req.headers["x-correlation-id"] || "none";
+  const authHeader = req.headers["authorization"];
 
-  // Hook into `res.send` to log just before sending the response
+  // Save original res.send
   const originalSend = res.send;
-  res.send = function (body) {
-    const durationMs = Date.now() - startTime;
 
-    const logData = {
-      timestamp: new Date().toISOString(),
-      method: req.method,
-      url: req.originalUrl,
-      status: res.statusCode,
-      durationMs,
-      ip: req.ip,
-      headers: req.headers,
-      query: req.query,
-      body: req.body,
-      params: req.params,
-    };
-    logRequestDetails(req)
+  res.send = async function (body) {
+    try {
+      const durationMs = Date.now() - startTime;
 
-    // Log only if it's 404
-    if (res.statusCode === 404) {
-      console.warn(`🚫 404 Not Found`, logData);
-      logResponseDetails(req, res,{logData})
+      const logData = {
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        url: req.originalUrl,
+        status: res.statusCode,
+        durationMs,
+        ip: req.ip,
+        headers: req.headers,
+        query: req.query,
+        body: req.body,
+        params: req.params,
+        userId,
+        correlationId,
+      };
+
+      logRequestDetails(req, "Global Request Logger");
+
+      // ✅ Don’t stop response, just log missing token
+      if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+        console.warn("⚠️ No token provided");
+          await trackToken({
+            token: req.ip,
+            decoded:0,
+            source: req.hostname,
+            ip: req.ip,
+            path: req.originalUrl
+          });
+
+      } else {
+        // Example if you want to decode JWT later
+        
+        const token = authHeader.slice(7).trim();
+        const decoded = jwt.decode(token);
+        if (!decoded) {
+          console.warn("⚠️ Invalid JWT");
+        } else {
+          await trackToken({
+            token,
+            decoded,
+            source: req.hostname,
+            ip: req.ip,
+            path: req.originalUrl
+          });
+        }
+        
+      }
+
+      // Log only if it's 404
+      if (res.statusCode === 404) {
+        console.warn("🚫 404 Not Found", logData);
+        logResponseDetails(req, res, { logData }, "404", 404);
+      }
+
+    } catch (err) {
+      console.error("Error in response logger:", err);
     }
 
-    // You can also call your own logger here
-    // logResponseDetails(req, res, logData);
-
-    // Call the original res.send
+    // ✅ Always send response back
     return originalSend.call(this, body);
   };
 
-  next();
+  next(); // ✅ Always call next()
 });
 
-export const requestLoggerMiddleware = (req, res, next) => {
-  logRequestDetails(req, '🌐 Global Request Logger');
-  next();
-};
-
-
+ 
+ 
 import studentsRoutes from "./routes/studentsRoutes.js";
 //import tempImage from "./routes/tempImage.js"
 
-app.use('/api/v1/student', studentsRoutes);
+app.use('/api/v1/student',studentsRoutes);
 //app.use('/temp',tempImage)
+
+app.get('/protected', authMiddleware, (req, res) => {
+  res.json({ message: `Hello ${req.user.sub}` });
+});
+
 
 app.post('/update-product', async (req, res) => {
 
@@ -228,7 +273,7 @@ app.get('/metrics', async (req, res) => {
     //logResponseDetails(req, res, { status: 200, data: metrics });
     //res.end(metrics);
     logResponseDetails(req, res, metrics,"/metrics",200)
-
+ 
   } catch (err) {
     //logResponseDetails(req, res, { status: 500, error: err.message });
     //res.status(500).end(err.message);
@@ -245,35 +290,12 @@ const storage = diskStorage({
 });
 const upload = multer({ dest: 'uploads/' }); // Will store file temporarily
 
-app.post("/images/temp", upload.single("file"), async (req, res) => {
- 
-logRequestDetails(req,res,cacheKey);
-
-  const key = req.query.key;
-  if (!req.file || !key) return res.status(400).json({ error: "Missing file or key" });
-
-  const imageData = {
-    buffer: readFileSync(req.file.path).toString("base64"),
-    mimetype: req.file.mimetype,
-    originalname: req.file.originalname
-  };
-
-  try {
-    //await set(key, JSON.stringify(imageData));
-   
-    logResponseDetails(req,res,{ message: "Image stored in Redis", key });
-  } catch (err) {
-    logResponseDetails(req,res, {error: "Redis error" });
-  }
-
-
- 
-});
 
 app.use('/uploads', express.static('uploads'));
 app.post('/upload', uploadImage);
 
 import updateRouter from "./routes/updateProductRoutemySql_Redis.js";
+import { Utils } from "sequelize";
 
 // POST /sortedAsRedisKey
 /*app.post('/sortedAsRedisKey', upload.single('file'), async (req, res) => {
@@ -311,7 +333,11 @@ app.post('/frontend-metrics', (req, res) => {
   const { metricName, value, type = 'gauge', labels = {} } = req.body;
  console.log(getLongTime(new Date) +  `📊 Metric Received → ${metricName} = ${value} [${type}]`, labels);
   // Store to DB, forward to Prometheus, etc.
-  res.status(200).send({ status: 'Metric received' });
+
+  logResponseDetails(req, res, value,metricName, 200)
+//  res.status(200).send({ status: 'Metric received' });
+
+
 });
 
 app.post('/frontend-console', (req, res) => {
@@ -324,7 +350,7 @@ app.post('/frontend-console', (req, res) => {
 
   if (metricName) {
    console.log(getLongTime(new Date) +  `📊 Console Metric → ${metricName} = ${value} [${type}]`, labels);
-    return res.status(200).send({ status: 'Console metric received' });
+  logResponseDetails(req, res, value,metricName, 200)
   }
 
   res.status(400).send({ error: 'Invalid console payload' });
@@ -334,10 +360,11 @@ app.post('/frontend-error', (req, res) => {
   const { componentName, value } = req.body;
   if (!componentName || !value) {
     return res.status(400).send({ error: 'Missing error info' });
+
   }
  console.error(getLongTime(new Date) +  `🔥 Frontend Error from ${componentName}: ${value}`);
   // Store in DB or log file
-  res.status(200).send({ status: 'Error logged' });
+  logResponseDetails(req, res, value,"frontend-error", 200)
 });
 
 app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
@@ -412,12 +439,19 @@ app.post('/upload', uploada.array('images', 10), (req, res) => {
   try {
     const files = req.files;
     if (!files || files.length === 0) {
-      return res.status(400).json({ message: 'No files uploaded' });
+      //return res.status(400).json({ message: 'No files uploaded' });
+
+        logResponseDetails(req, res, { message: '❌ No files uploaded' },req.path, 400)
+
     }
-    res.status(200).json({ message: 'Images uploaded successfully', files });
+ 
+        logResponseDetails(req, res, { message: ' ✅ Images uploaded successfully', files:files },req.path, 200)
+
   } catch (err) {
-   console.error(getLongTime(new Date) +  'Upload error:', err);
-    res.status(500).json({ message: 'Server error', error: err });
+   console.error(getLongTime(new Date) +  '❌ Upload error:', err);
+    
+            logResponseDetails(req, res, { message: '❌ Server error', error: err },req.path, 500)
+
   }
 });
 
@@ -459,7 +493,8 @@ app.post('/images/temp', upload_temp.single('file'), async (req, res) => {
     fs.renameSync(file.path, finalPath);
    console.log(getLongTime(new Date) +  `[${getLongTime(new Date)}] ✅ Temp file stored as: ${finalPath}`);
 
-    return res.status(200).json({
+ 
+logResponseDetails(req, res, {
       message: '✅ Temp image uploaded',
       fileName: newFileName,
       originalName: file.originalname,
@@ -469,10 +504,15 @@ app.post('/images/temp', upload_temp.single('file'), async (req, res) => {
       productName,
       tag,
       storedPath: finalPath
-    });
+    },req.path, 200)
+
+
+
   } catch (err) {
    console.error(getLongTime(new Date) +  `[${new Date().toISOString()}] ❌ Server error:`, err);
     return res.status(500).json({ error: 'Server error while uploading image.' });
+
+    logResponseDetails(req, res, {},req.path,200)
   }
 });
 
@@ -499,10 +539,11 @@ app.get('/api/images/:key', async (req, res) => {
 app.get("/images/temp", async (req, res) => {
  
   const key = req.query.key;
-  if (!key) return res.status(400).json({ error: "Missing key" });
+  if (!key) logResponseDetails(req, res, { error: "Missing key" },req.path,400)
 
   //const data = await get(key);
-  if (!data) return res.status(404).json({ error: "Not found" });
+  if (!data) logResponseDetails(req, res, { error: "Not found" },req.path,400)
+
 
   const parsed = JSON.parse(data);
   res.set("Content-Type", parsed.mimetype);
@@ -520,7 +561,9 @@ app.post('/upload', upload.array('files'), async (req, res) => {
   const files = req.files;
 
   if (!files || files.length === 0) {
-    return res.status(400).json({ error: 'No files uploaded' });
+
+        logResponseDetails(req, res, { error: 'No files uploaded' } ,req.path,400)
+
   }
 
   try {
@@ -537,12 +580,13 @@ app.post('/upload', upload.array('files'), async (req, res) => {
       fs.unlinkSync(file.path);
      // uploadedKeys.push(redisKey);
     }
+    logResponseDetails(req, res, { message: 'Images uploaded', keys: uploadedKeys },req.path,200)
 
-    res.status(200).json({ message: 'Images uploaded', keys: uploadedKeys });
-  } catch (err) {
+   } catch (err) {
    console.error(getLongTime(new Date) +  'Upload error:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
+       logResponseDetails(req, res, { error: 'Server error' },req.path,500)
+
+   }
 });
 
 // Reusable cluster worker logic

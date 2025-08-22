@@ -1,10 +1,14 @@
-import createClient from 'ioredis';
+import { createClient } from 'redis'; // Note: 'ioredis' has different API; if you use 'redis' npm, this is correct
 import { redisHost, redisPort } from "../keys.js";
 
 const redisClient = new createClient({
+  socket: {
   host: redisHost,
-  port: redisPort,
+      port: redisPort,
+  },
+//  password: 'system123',  // Add your Redis password here
 });
+
 
 
 redisClient.on('error', (err) => {
@@ -17,7 +21,7 @@ const connectRedis = async () => {
     console.log('✅ Redis connected');
     return true;
   } catch (err) {
-    console.error('Redis connection error:', err.message);
+    console.error('❌ Redis connection error:', err.message);
     return false;
   }
 };
@@ -25,14 +29,32 @@ const connectRedis = async () => {
 const apiResponse = (success, message, data) => ({ success, message, data });
 
 const cacheSet = async (key, value, ttlSeconds = 300) => {
+
+  if(!connectRedis()){
+
+
+        console.error('❌ Redis connection error:', err.message);
+
+  }
+    console.log('✅ Redis connected');
+
   try {
     await redisClient.setEx(key, ttlSeconds, JSON.stringify(value));
     return apiResponse(true, 'Cached successfully', null);
+
   } catch (err) {
-    return apiResponse(false, 'Cache set failed: ' + err.message, null);
+    return apiResponse(false, '❌ Cache set failed: ' + err.message, null);
   }
 };
 
+const refreshKey = async (key) => {
+
+  if((await cacheExists(key)).success){
+    cacheDelete(key);
+  }
+  
+
+}
 export const cacheExists = async (key) => {
   try {
     const result = await redisClient.exists(key); // returns 1 or 0
@@ -44,7 +66,7 @@ export const cacheExists = async (key) => {
   } catch (err) {
     return {
       success: false,
-      message: 'EXISTS check failed: ' + err.message,
+      message: '❌ EXISTS check failed: ' + err.message,
       data: false,
     };
   }
@@ -55,9 +77,10 @@ const cacheGet = async (key) => {
   try {
     const raw = await redisClient.get(key);
     if (!raw) return apiResponse(false, 'Cache miss', null);
+
     return apiResponse(true, 'Cache hit', JSON.parse(raw));
   } catch (err) {
-    return apiResponse(false, 'Cache get failed: ' + err.message, null);
+    return apiResponse(false, '❌ Cache get failed: ' + err.message, null);
   }
 };
 
@@ -66,10 +89,10 @@ const cacheDelete = async (key) => {
     const result = await redisClient.del(key);
     return apiResponse(true, result > 0 ? 'Key deleted' : 'Key not found', null);
   } catch (err) {
-    return apiResponse(false, 'Cache delete failed: ' + err.message, null);
+    return apiResponse(false, '❌ Cache delete failed: ' + err.message, null);
   }
 };
 
 //module.exports = { connectRedis, cacheSet, cacheGet, cacheDelete };
 
-export default {connectRedis, cacheSet, cacheGet, cacheDelete, cacheExists}
+export default {connectRedis, cacheSet, cacheGet, cacheDelete, cacheExists, refreshKey}

@@ -112,6 +112,9 @@ logRequestDetails(req, "addSodEodList");
 
 }
 
+
+
+
 const getSodEodItems = async(req, res) =>{
 logRequestDetails(req, "getSodEodItems");
     try {

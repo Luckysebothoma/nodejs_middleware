@@ -2,25 +2,24 @@ networks:
   sweety-sweet-network-bridge:
     driver: bridge
     external: true
-    internal: false
+
   sweety-sweet-tunnel:
     driver: bridge
     external: true
-    internal: false
+
   node-exporter:
     driver: bridge
     external: true
-    internal: false
+
   queue-network:
     driver: bridge
     external: true
-    internal: false
+
   database:
     driver: bridge
     external: true
-    internal: false
-  
-  
+
+
 volumes:
   certs:
     external: true
@@ -58,6 +57,7 @@ services:
       - node-exporter
       - queue-network
       - database
+      - sweety-sweet-tunnel
 
 
   redis-api:

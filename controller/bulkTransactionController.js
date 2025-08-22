@@ -894,6 +894,92 @@ async function addPriceTrace(addPriceTracing, mySqlConnection) {
 }
 }
 
+// Reusable function to insert price tracing records
+async function addEstimates(estimatesList, mySqlConnection) {
+
+  const key = "estimates";
+ 
+         const query = `
+            INSERT INTO estimates (productId, estimatedSelling, actualSelling, lastUpdated)
+            VALUES (?, ?, ?, ?)`;
+        // Parameterized query with replacements
+ 
+
+  const replacements = [
+    estimatesList.productId,
+    estimatesList.estimatedSelling,
+    estimatesList.actualSelling,
+    estimatesList.lastUpdated, 
+  ];
+
+  try {
+ 
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
+  return result;
+  
+} catch (error) {
+
+  await mySqlConnection.rollback();
+  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
+  throw `Exception on ${key} \n ${error} `;
+  
+}
+}
+
+// Reusable function to insert price tracing records
+async function addSodEod(sodEodList, mySqlConnection) {
+
+  const key = "sodEodItems";
+  const query = `
+                INSERT INTO sodEodItems (productId, productName, itemsRemaining, itemsTaken, lastUpdated)
+                VALUES (?, ?, ?, ?, ?)
+            `;  
+
+  const replacements = [
+    sodEodList.productId,
+    sodEodList.productName,
+    sodEodList.itemsRemaining,
+    sodEodList.itemsTaken,
+    sodEodList.lastUpdated,
+   ];
+
+  try {
+ 
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
+  return result;
+  
+} catch (error) {
+
+  await mySqlConnection.rollback();
+  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
+  throw `Exception on ${key} \n ${error} `;
+  
+}
+}
+async function addProductItemPricing(productItemPricing, mySqlConnection){
+
+  const query = `
+            INSERT INTO productItemPricing (productId, productDescription, itemGroup, itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+
+        // Parameterized query with replacements
+        const replacements = [productItemPricing.productId, productItemPricing.productDescription,productItemPricing.itemGroup,productItemPricing.itemsRemainder, productItemPricing.costOfRemainder, productItemPricing.groupedQuantity, productItemPricing.groupedProfit, productItemPricing.groupedCommission];
+
+          try {
+ 
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
+  return result;
+  
+} catch (error) {
+
+  await mySqlConnection.rollback();
+  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
+  throw `Exception on ${key} \n ${error} `;
+  
+}
+        
+
+}
 async function deleteAvailableItems(productId){
 
   const data = await mysqlPool.query('DELETE FROM availableItesms WHERE productId = :productId', {
@@ -939,5 +1025,33 @@ return data;
 
 }
 
+const addListOfSodEod = async(req, res) =>{
 
-export default {addNewCandy, addNewCandy_with_image, deleteItem, updateProducts_Batch}
+
+  const {sodEOd, availableItems, estimates, pricingTracing,ProductItemPricing} = req.body;
+
+          
+
+  console.log(`pricingTracing: ${JSON.stringify(pricingTracing)} \n sodEOd: ${JSON.stringify(sodEOd)}, \n availableItems: ${JSON.stringify(availableItems)}, \n estimates: ${JSON.stringify(estimates)}`)
+  
+  const dbConnection = await getConnection()
+  
+  const sodEodResponse = await addSodEod(sodEOd, dbConnection)
+  const availableItemsResponse = await addAvailableItems(availableItems,dbConnection);
+  const estimateResponse = await addEstimates(estimates, dbConnection)
+  const productItemPricingResponse= await (ProductItemPricing);
+  const pricetracingReponse = await addPriceTrace(pricingTracing);
+
+  const response ={
+    sodEodResponse,
+    availableItemsResponse,
+    estimateResponse,
+    pricetracingReponse
+  }
+  return logResponseDetails(req, res, response, "addListOfSodEod",200)
+
+
+}
+
+
+export default {addNewCandy, addNewCandy_with_image, deleteItem, updateProducts_Batch, addListOfSodEod, addSodEod}
