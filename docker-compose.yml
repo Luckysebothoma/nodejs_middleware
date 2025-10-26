@@ -28,8 +28,8 @@ services:
       - MYSQL_PORT= ${MYSQL_PORT}
       - TZ=Africa/Johannesburg
     ports:
-      - 8083:443
-      - 8093:80
+      - 8083:8443
+      - 8093:8080
     restart: unless-stopped
     networks:
       - api-network
