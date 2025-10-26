@@ -1,30 +1,9 @@
 networks:
-  sweety-sweet-network-bridge:
-    driver: bridge
-    external: true
-
-  sweety-sweet-tunnel:
-    driver: bridge
-    external: true
-
-  node-exporter:
-    driver: bridge
-    external: true
-
-  queue-network:
-    driver: bridge
-    external: true
-
-  database:
-    driver: bridge
+  api-network:
     external: true
 
 
-volumes:
-  certs:
-    external: true
-
-services: 
+services:
   sweety-api:
     container_name: sweety-api
     build:
@@ -32,7 +11,7 @@ services:
       dockerfile: Dockerfile
     volumes:
       - .:/app
-      - certs:/certs:ro
+      - ./edge_reasume_certs:/certs:ro
     env_file:
       - .env
     environment:
@@ -53,40 +32,4 @@ services:
       - 8093:80
     restart: unless-stopped
     networks:
-      - sweety-sweet-network-bridge
-      - node-exporter
-      - queue-network
-      - database
-      - sweety-sweet-tunnel
-
-
-  redis-api:
-    container_name: sweety-api-redis-container
-    build:
-      context: ./sweety-app-redis
-      dockerfile: Dockerfile.dev
-    volumes:
-      - ./sweety-app-redis:/app
-      - /certs/crt.pem:/certs/cert.crt
-      - /certs/key.pem:/certs/key.key
-    env_file:
-      - .env
-    environment:
-      - PGUSER= ${POSTGRES_USER}
-      - PGHOST= ${POSTGRES_HOST}
-      - PGDATABASE= ${POSTGRES_DATABASE}
-      - PGPASSWORD= ${POSTGRES_PASSWORD}
-      - PGPORT= ${POSTGRES_PORT}
-      - MYSQL_ROOT_PASSWORD= ${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE= ${MYSQL_DATABASE}
-      - MYSQL_USER= ${MYSQL_USER}
-      - MYSQL_PASSWORD= ${MYSQL_PASSWORD}
-      - MYSQL_HOST= ${MYSQL_HOST}
-      - MYSQL_PORT= ${MYSQL_PORT}
-      - TZ=Africa/Johannesburg
-    ports:
-      - 8090:3000
-    restart: unless-stopped
-    networks:
-      - sweety-sweet-network-bridge
-      - node-exporter
+      - api-network

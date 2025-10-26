@@ -72,8 +72,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // TLS Certs
 const credentials = {
-  key: readFileSync("/certs/privkey.pem", "utf8"),
-  cert: readFileSync("/certs/cert.pem", "utf8")
+  key: readFileSync("/certs/nginx-selfsigned.key", "utf8"),
+  cert: readFileSync("/certs/nginx-selfsigned.crt", "utf8")
 };
 
 // Middleware
@@ -81,10 +81,8 @@ app.use(morgan("dev"));
 app.use(express.json());
 
 const allowedOrigins = [
-  "https://192.168.0.140:4200",
+  "https://192.168.0.140:9444",
   "https://192.168.0.140:4210",
-  "https://sweety.justdo-it.uk",
-  "https://sweety-dev.justdo-it.uk",
   
 ];
 
@@ -603,11 +601,11 @@ function startWorkerProcesses(app, credentials) {
       cluster.fork();
     });
   } else {
-    createHttpServer(app).listen(80, () => {
+    createHttpServer(app).listen(8080, () => {
      console.log(getLongTime(new Date) +  `${formattedDate()} Server running on http://localhost:80`);
     });
 
-    createServer(credentials, app).listen(443, () => {
+    createServer(credentials, app).listen(8443, () => {
      console.log(getLongTime(new Date) +  `${formattedDate()} Server running on https://localhost:443`);
     });
   }
