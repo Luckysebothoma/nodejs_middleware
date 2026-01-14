@@ -61,3 +61,7 @@ coverage/
 
 # sqlite
 .sqlite
+.cache/
+up/
+.deleted/
+*.log
