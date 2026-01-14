@@ -1,0 +1,62 @@
+version: "3.9"
+
+networks:
+  databases:
+    driver: bridge
+    external: true
+  obs-network:
+    external: true
+  reactive-resume-network:
+    driver: bridge
+    external: true
+
+
+services: 
+  sweety-api:
+    container_name: sweety-api
+    image: 192.168.0.140:5000/sweet-sweet-api:latest-prd
+    volumes:
+      - .:/app
+      - ./edge_reasume_certs:/certs:ro
+      - /etc/hosts:/etc/hosts:ro
+    env_file:
+      - .env
+    environment:
+      - PGUSER=momo
+      - PGHOST=postgres-db
+      - PGDATABASE=yummies
+      - PGPASSWORD=92a65c97f1f9a8f33894f20d2ef687eb8d982b3248dc258d8483eada500ea6ad
+      - PGPORT= 5432
+      - MYSQL_ROOT_PASSWORD=933f0ae20a532a33afc01fe74dd273bac8e9265670ef709ba0ae8ae3bca9ddbf
+      - MYSQL_DATABASE=mydb
+      - MYSQL_USER=mini
+      - MYSQL_PASSWORD=f492f6170525104a133cbc8e492782ee21b04a1a3f701158bc242e24e599726c
+      - MYSQL_HOST=mysql-db
+      - MYSQL_PORT=3306
+      - RABBIT_URL=amqp://admin:cbeb8726798a50165d9ea03f22e16a9c67da8295e6bb007f52ba9653a0f313fe@rabbitmq:5672
+      - TZ=Africa/Johannesburg
+      - MINIO_HOST=minio
+      - MINIO_PORT=9000
+      - MINIO_USE_SSL=false
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=aeae0e2a6e0b537e757742e452cb5eea29761f79dcb3cf1ee147f11d021126ad
+    ports:
+      - 8083:8443
+      - 8093:8080
+    restart: unless-stopped
+    networks:
+      - databases
+      - obs-network
+    deploy:
+      replicas: 1  # Only one instance
+      placement:
+        constraints:
+          - node.role == manager  # Pin to specific node
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: '256mb'

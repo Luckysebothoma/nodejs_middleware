@@ -1,0 +1,668 @@
+// Clean and Modular Express Server
+import express from "express";
+import morgan from "morgan";
+import cors from "cors";
+import multer, { diskStorage } from "multer";
+import { config } from "dotenv";
+import { readFileSync, existsSync, mkdirSync } from "fs";
+import  fs  from 'fs'
+import { join, extname } from "path";
+import { createServer } from "https";
+import { createServer as createHttpServer } from "http";
+import cluster from "cluster";
+import { cpus } from "os";
+import { v4 as uuidv4 } from "uuid";
+import { auth } from "express-oauth2-jwt-bearer";
+import path from 'path';
+import { fileURLToPath } from 'url';
+// Only use default import and destructuring
+import jwt from "jsonwebtoken";
+ 
+ import { authMiddleware } from './utils/authMiddleware.js';
+import { logRequestDetails, logResponseDetails } from './utils/requestLogger.js';
+
+import redisClient from './config/redisClient.js';
+
+
+import client from 'prom-client';
+
+
+// Create a new registry
+const register = new client.Registry();
+
+const  {connectRedis, cacheSet, cacheGet, cacheDelete, cacheExists} = redisClient;
+
+ import { uploadImage } from './controller/uploadController.js';
+
+import ControllerHandler from "./utils/ControllerHandler.js"
+
+import {trackToken} from "./config/trackToken.js"
+
+const {
+  getCachedOrQuery,
+  addCachedAndQuery,
+  updateCachedOrQuery,
+  removeCachedAndQuery
+} = ControllerHandler;
+
+const cacheKey = 'sodEodItems'; // Key to store the list in Redis
+
+
+
+// 👇 Needed for __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/*
+import {
+  Registry,
+  collectDefaultMetrics,
+  Counter,
+  Histogram,
+  Gauge,
+  Pushgateway
+} from "prom-client";
+
+
+ 
+
+*/
+import TimeUtils from "./utils/Time.js";
+
+const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+
+// Load env vars
+config();
+const app = express();
+
+app.use(express.urlencoded({ extended: true }));
+
+/*
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  const userId = req.headers["x-user-id"] || "unknown";
+  const correlationId = req.headers["x-correlation-id"] || "none";
+  const authHeader = req.headers["authorization"];
+
+  // Save original res.send
+  const originalSend = res.send;
+
+  res.send = async function (body) {
+    try {
+      const durationMs = Date.now() - startTime;
+
+      const logData = {
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        url: req.originalUrl,
+        status: res.statusCode,
+        durationMs,
+        ip: req.ip,
+        headers: req.headers,
+        query: req.query,
+        body: req.body,
+        params: req.params,
+        userId,
+        correlationId,
+      };
+
+      logRequestDetails(req, "Global Request Logger");
+
+      // ✅ Don’t stop response, just log missing token
+      if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+        console.warn("⚠️ No token provided");
+
+
+
+      } else {
+        // Example if you want to decode JWT later
+        
+        const token = authHeader.slice(7).trim();
+        const decoded = jwt.decode(token);
+        if (!decoded) {
+          console.warn("⚠️ Invalid JWT");
+        } else {
+          await trackToken({
+            token,
+            decoded,
+            source: req.hostname,
+            ip: req.ip,
+            path: req.originalUrl
+          });
+        }
+        
+      }
+
+      // Log only if it's 404
+      if (res.statusCode === 404) {
+        console.warn("🚫 404 Not Found", logData);
+        logResponseDetails(req, res, { logData }, "404", 404);
+      }
+
+    } catch (err) {
+      console.error("Error in response logger:", err);
+    }
+
+    // ✅ Always send response back
+    return originalSend.call(this, body);
+  };
+
+  next(); // ✅ Always call next()
+});
+
+*/
+// TLS Certs
+const credentials = {
+  key: readFileSync("/certs/nginx-selfsigned.key", "utf8"),
+  cert: readFileSync("/certs/nginx-selfsigned.crt", "utf8")
+};
+
+// Middleware
+app.use(morgan("dev"));
+app.use(express.json());
+
+// =============================
+// Prometheus Metrics Endpoint
+// =============================
+
+
+
+
+
+
+// Routes
+app.get("/", (req, res) => {
+
+  
+  //logResponseDetails(req, res, "Hello World!", "/",200);
+  logRequestDetails(req,"/ root")
+  res.status(200).send("OK");
+ 
+});
+
+// Basic health endpoint (200 = success)
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
+// Optional: add readiness and liveness endpoints
+app.get("/ready", (req, res) => {
+  // you can include custom logic here, e.g., DB check, cache check
+  res.status(200).json({ status: "ready" });
+});
+
+app.get("/status", (req, res) => {
+  // you can include custom logic here, e.g., DB check, cache check
+  res.status(200).json({ status: "ready" });
+});
+
+app.get("/liveness", (req, res) => {
+  res.status(200).json({ status: "alive" });
+});
+
+
+app.get('/metrics', async (req, res) => {
+  try {
+    logRequestDetails(req, '/metrics');
+
+    // Set Prometheus-compliant content type
+    res.setHeader('Content-Type', register.contentType);
+
+    // Collect and send metrics
+    const metrics = await register.metrics();
+    res.status(200).send(metrics);
+
+    // Optional detailed log (safe without exposing all metrics)
+    //logResponseDetails(req, res, { status: 200, message: 'Metrics served successfully' });
+
+  } catch (err) {
+    console.error('❌ /metrics error:', err);
+    logResponseDetails(req, res, { status: 500, error: err.message });
+    //res.status(500).send(`Error retrieving metrics: ${err.message}`);
+  }
+});
+
+
+const allowedOrigins = [
+  "https://192.168.0.140:4200",
+  "https://192.168.0.140:9444",
+  "https://192.168.0.140:4210",
+  "192.168.122.0/24",
+  "https://edge-lb.jstdo.uk",
+  "https://192.168.0.140:9444"
+];
+
+
+
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`Node Response: Not allowed by CORS: ${origin}`));
+    }
+  }, 
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'x-user-id'],
+  credentials: true, // if you're using cookies or Auth headers
+   optionsSuccessStatus: 200
+}));
+// Prometheus metrics
+//collectDefaultMetrics({ register });
+
+
+ 
+ 
+import studentsRoutes from "./routes/studentsRoutes.js";
+//import tempImage from "./routes/tempImage.js"
+
+app.use('/api/v1/student',studentsRoutes);
+//app.use('/temp',tempImage)
+
+app.get('/protected', authMiddleware, (req, res) => {
+  res.json({ message: `Hello ${req.user.sub}` });
+});
+
+
+app.post('/update-product', async (req, res) => {
+
+ 
+  
+  const productListCacheKey = "productList"
+  const { oldData, newData } = req.body;
+
+  if (!oldData || !newData) {
+    return res.status(400).json({ error: 'oldData and newData are required' });
+  }
+
+  const productId = newData.productId;
+
+  try {
+
+    // Save newData in MySQL - assume you have a table 'products' with columns matching newData keys
+    const sql = `
+      INSERT INTO products (productId, productName, productFlavor, productPrice, image_url)
+      VALUES (?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        productName = VALUES(productName),
+        productFlavor = VALUES(productFlavor),
+        productPrice = VALUES(productPrice),
+        image_url = VALUES(image_url)
+    `;
+//    const [result] = await pool.execute(sql, params);
+      const [Redisresult] = await updateCachedOrQuery("product_backup:"+productListCacheKey, sql, sql, oldData);
+      const [mySqlresult] = await updateCachedOrQuery(productListCacheKey, sql, sql, newData);
+
+
+    return res.status(200).json({
+      message: 'New data saved in MySQL, old data backed up in Redis',
+      mysqlResult: result
+
+    });
+
+  } catch (err) {
+   console.error(getLongTime(new Date) +  'Error updating product:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+/*
+app.use("*", (req, res, next) => {
+  logRequestDetails(req, `Accessed path: ${req.originalUrl}`);
+console.log(getLongTime(new Date) +  getLongTime(new Date) +  "Headers:", req.headers);
+  next();
+});
+*/
+// POST /images/temp - Upload image to Redis only
+
+//app.post('/images/temp-key', async (req, res) => {
+
+
+
+
+
+ 
+
+// Upload logic
+const uploadDir = join("uploads");
+if (!existsSync(uploadDir)) mkdirSync(uploadDir);
+
+const storage = diskStorage({
+  destination: uploadDir,
+  filename: (req, file, cb) => cb(null, `${file.fieldname}-${Date.now()}${extname(file.originalname)}`)
+});
+const upload = multer({ dest: 'uploads/' }); // Will store file temporarily
+
+
+app.use('/uploads', express.static('uploads'));
+app.post('/upload', uploadImage);
+
+import updateRouter from "./routes/updateProductRoutemySql_Redis.js";
+import { Utils } from "sequelize";
+
+// POST /sortedAsRedisKey
+/*app.post('/sortedAsRedisKey', upload.single('file'), async (req, res) => {
+console.log(getLongTime(new Date) +  getLongTime(new Date) +  "logs for sortedAsRedisKey:",req)
+  try {
+    const { file } = req;
+
+    if (!file) {
+      return res.status(400).json({ error: 'No image uploaded.' });
+    }
+
+    const buffer = fs.readFileSync(file.path); // Read image file
+    const redisKey = `image:${Date.now()}:${file.originalname}`;
+
+    // Store image buffer in Redis as base64 string
+    await setDataWithNoExpiry(redisKey, buffer.toString('base64'));
+    
+    // Optional: Add key to a sorted set for tracking
+   // await redis.zadd('imageSortedSet', Date.now(), redisKey);
+
+    // Cleanup local file
+    fs.unlinkSync(file.path);
+
+    res.status(200).json({ message: 'Image stored in Redis', key: redisKey });
+  } catch (err) {
+   console.error(getLongTime(new Date) +  '❌ Error uploading image:', err);
+    res.status(500).json({ error: 'Server error while uploading image' });
+  }
+});
+*/
+
+
+
+app.post('/frontend-metrics', (req, res) => {
+  const { metricName, value, type = 'gauge', labels = {} } = req.body;
+ console.log(getLongTime(new Date) +  `📊 Metric Received → ${metricName} = ${value} [${type}]`, labels);
+  // Store to DB, forward to Prometheus, etc.
+
+  logResponseDetails(req, res, value,metricName, 200)
+//  res.status(200).send({ status: 'Metric received' });
+
+
+});
+
+app.post('/frontend-console', (req, res) => {
+  const { log, metricName, value, type = 'gauge', labels } = req.body;
+
+  if (log) {
+   console.log(getLongTime(new Date) +  `🪵 Console Log: ${log}`);
+    return res.status(200).send({ status: 'Console log received' });
+  }
+
+  if (metricName) {
+   console.log(getLongTime(new Date) +  `📊 Console Metric → ${metricName} = ${value} [${type}]`, labels);
+  logResponseDetails(req, res, value,metricName, 200)
+  }
+
+  res.status(400).send({ error: 'Invalid console payload' });
+});
+
+app.post('/frontend-error', (req, res) => {
+  const { componentName, value } = req.body;
+  if (!componentName || !value) {
+    return res.status(400).send({ error: 'Missing error info' });
+
+  }
+ console.error(getLongTime(new Date) +  `🔥 Frontend Error from ${componentName}: ${value}`);
+  // Store in DB or log file
+  logResponseDetails(req, res, value,"frontend-error", 200)
+});
+
+app.post('/sortedAsRedisKey', upload.single('blob'), async (req, res) => {
+ 
+
+ 
+  try {
+    const file = req.file;
+    const redisKey = req.body.key;
+    const base64FromBody = req.body.base64;
+
+    if (!file) {
+     // return res.status(400).json({ error: '❌ No image blob received in formData.' });
+     logResponseDetails(req, res,{ error: '❌ No image blob received in formData.' })
+
+    }
+
+    if (!redisKey) {
+//      return res.status(400).json({ error: '❌ Redis key missing in formData.' });
+      logResponseDetails(req, res,{ error: '❌ Redis key missing in formData.' })
+    }
+/*
+   console.log(getLongTime(new Date) +  `${getLongTime(new Date)} - 🖼️ Image Received:`, {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+    });
+*/
+    logRequestDetails(req)
+
+    // Choose whether to use base64 from client or server-side conversion
+    const buffer = file.buffer;
+    const base64 = base64FromBody || buffer.toString('base64');
+
+    // ✅ Store in Redis
+    //await setDataWithExpiry(redisKey, base64);
+//   console.log(getLongTime(new Date) +  `${getLongTime(new Date)} - ✅ Image stored in Redis under key: ${redisKey}`);
+
+    //res.status(200).json({ message: '✅ Image stored in Redis', key: redisKey });
+
+    logResponseDetails(req, res,{message: '✅ Image stored in Redis', key: redisKey },req.path,200)
+  } catch (err) {
+   console.error(getLongTime(new Date) +  `${Date.now()} - ❌ Error in /sortedAsRedisKey:`, err);
+    res.status(500).json({ error: 'Server error while uploading image' });
+
+  }
+ 
+}
+
+
+);
+
+
+
+// Create a storage strategy
+const storageImages = multer.diskStorage({
+  destination: function (req, file, cb) {
+ 
+    cb(null, 'uploads/'); // Directory to save files
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + '-' + file.originalname);
+  }
+});
+
+// Init multer
+const uploada = multer({ storage: storageImages });
+
+// Route: POST /upload
+app.post('/upload', uploada.array('images', 10), (req, res) => {
+  try {
+    const files = req.files;
+    if (!files || files.length === 0) {
+      //return res.status(400).json({ message: 'No files uploaded' });
+
+        logResponseDetails(req, res, { message: '❌ No files uploaded' },req.path, 400)
+
+    }
+ 
+        logResponseDetails(req, res, { message: ' ✅ Images uploaded successfully', files:files },req.path, 200)
+
+  } catch (err) {
+   console.error(getLongTime(new Date) +  '❌ Upload error:', err);
+    
+            logResponseDetails(req, res, { message: '❌ Server error', error: err },req.path, 500)
+
+  }
+});
+
+const upload_temp = multer({ dest: 'temp_uploads/' }); // temp folder (auto-created if missing)
+
+app.post('/images/temp', upload_temp.single('file'), async (req, res) => {
+  const timestamp = new Date().toISOString();
+
+ 
+
+  try {
+    const file = req.file;
+    const { productId, productName, tag } = req.body;
+
+    if (!file) {
+      console.warn(`[${getLongTime(new Date)}] ❌ No file uploaded`);
+      return res.status(400).json({ error: 'No file uploaded.' });
+    }
+
+    // ✅ Validation
+    const allowedTypes = ['image/jpeg', 'image/png'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      console.warn(`[${getLongTime(new Date)}] ❌ Invalid MIME type: ${file.mimetype}`);
+      fs.unlinkSync(file.path);
+      return res.status(400).json({ error: 'Only JPEG/PNG files are allowed.' });
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      console.warn(`[${getLongTime(new Date)}] ❌ File too large: ${file.size}`);
+      fs.unlinkSync(file.path);
+      return res.status(400).json({ error: 'File size exceeds 5MB limit.' });
+    }
+
+    // ✅ Optional: Rename and store temporarily
+    const tempDir = path.join('temp_uploads');
+    const newFileName = `temp_${productId}_${Date.now()}_${file.originalname}`;
+    const finalPath = path.join(tempDir, newFileName);
+
+    fs.renameSync(file.path, finalPath);
+   console.log(getLongTime(new Date) +  `[${getLongTime(new Date)}] ✅ Temp file stored as: ${finalPath}`);
+
+ 
+logResponseDetails(req, res, {
+      message: '✅ Temp image uploaded',
+      fileName: newFileName,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+      productId,
+      productName,
+      tag,
+      storedPath: finalPath
+    },req.path, 200)
+
+
+
+  } catch (err) {
+   console.error(getLongTime(new Date) +  `[${new Date().toISOString()}] ❌ Server error:`, err);
+    return res.status(500).json({ error: 'Server error while uploading image.' });
+
+    logResponseDetails(req, res, {},req.path,200)
+  }
+});
+
+
+// Static files for uploaded images
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+
+app.get('/api/images/:key', async (req, res) => {
+
+ 
+
+
+  const { key } = req.params;
+  const redisKey = `temp:${key}`;
+  //const imageData = await redisClient.getBuffer(redisKey); // Redis must store binary as buffer
+
+  if (!imageData) return res.status(404).send('Image not found');
+
+  res.setHeader('Content-Type', 'image/png'); // or image/jpeg
+  res.send(imageData);
+});
+
+
+app.get("/images/temp", async (req, res) => {
+ 
+  const key = req.query.key;
+  if (!key) logResponseDetails(req, res, { error: "Missing key" },req.path,400)
+
+  //const data = await get(key);
+  if (!data) logResponseDetails(req, res, { error: "Not found" },req.path,400)
+
+
+  const parsed = JSON.parse(data);
+  res.set("Content-Type", parsed.mimetype);
+  res.send(Buffer.from(parsed.buffer, "base64"));
+});
+
+
+// Store uploaded files in temp directory
+const uploads = multer({ dest: 'uploads/' });
+
+
+// 👇 Must match the key used in FormData: 'files'
+app.post('/upload', upload.array('files'), async (req, res) => {
+ 
+  const files = req.files;
+
+  if (!files || files.length === 0) {
+
+        logResponseDetails(req, res, { error: 'No files uploaded' } ,req.path,400)
+
+  }
+
+  try {
+    const uploadedKeys = [];
+
+    for (const file of files) {
+      const buffer = fs.readFileSync(file.path);
+      const base64Data = buffer.toString('base64');
+
+      //const redisKey = `image:${Date.now()}:${file.originalname}`;
+      //await redis.set(redisKey, base64Data);
+      //await redis.zadd('uploadedFilesSorted', Date.now(), redisKey);
+
+      fs.unlinkSync(file.path);
+     // uploadedKeys.push(redisKey);
+    }
+    logResponseDetails(req, res, { message: 'Images uploaded', keys: uploadedKeys },req.path,200)
+
+   } catch (err) {
+   console.error(getLongTime(new Date) +  'Upload error:', err);
+       logResponseDetails(req, res, { error: 'Server error' },req.path,500)
+
+   }
+});
+
+// Reusable cluster worker logic
+function startWorkerProcesses(app, credentials) {
+  const cpuCount = cpus().length;
+
+  if (cluster.isPrimary) {
+   console.log(getLongTime(new Date) +  `${getShortTime(new Date())} Master PID ${process.pid} with ${cpuCount} CPUs`);
+    //logRequestDetails(app,credentials)
+    for (let i = 0; i < cpuCount - 1; i++) cluster.fork();
+
+    cluster.on("exit", worker => {
+     console.log(getLongTime(new Date) +  `${formattedDate()} Worker ${worker.process.pid} died, restarting...`);
+      cluster.fork();
+    });
+  } else {
+    createHttpServer(app).listen(8080, () => {
+     console.log(getLongTime(new Date) +  `${formattedDate()} Server running on http://localhost:8080`);
+    });
+
+    createServer(credentials, app).listen(8443, () => {
+     console.log(getLongTime(new Date) +  `${formattedDate()} Server running on https://localhost:8443`);
+    });
+  }
+}
+
+// 🛡️ Optional: error handling middleware
+app.use((err, req, res, next) => {
+ console.error(getLongTime(new Date) +  '🔥 Global Error Handler:', err.message);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+
+startWorkerProcesses(app, credentials);

@@ -1,0 +1,128 @@
+const express = require("express");
+const color = require("colors");
+const morgan = require("morgan");
+const dotenv = require("dotenv");
+const cors = require("cors");
+const fs = require("fs");
+const https = require("https"); 
+const http = require("http");
+const cluster = require("cluster");
+const path = require("path");
+const os = require("os");
+const multer = require("multer");
+const { auth } = require("express-oauth2-jwt-bearer");
+const bodyParser = require('body-parser');
+
+// Load environment variables
+dotenv.config();
+
+// Certificate files for HTTPS
+const privateKey = fs.readFileSync("/certs/key.key", "utf8");
+const certificate = fs.readFileSync("/certs/cert.crt", "utf8");
+const credentials = { key: privateKey, cert: certificate };
+
+// Allowed origins for CORS
+const allowedOrigins = [
+  "https://192.168.0.140:4200",
+  "https://192.168.0.123:4200",
+  "https://linux-hp.local:4200",
+  "https://linux-acer.local:4200",
+  "https://sweety_acer.justdo-it.uk",
+  "https://sweety.justdo-it.uk",
+  "cli-app-angular-sweety-sweet.pages.dev",
+];
+
+// CORS Options
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  optionsSuccessStatus: 200,
+};
+
+// JWT Check Middleware
+const jwtCheck = auth({
+  audience: "https://linux.justdo-it.local:8083",
+  issuerBaseURL: "https://dev-3ocho460qagqipds.us.auth0.com/",
+  tokenSigningAlg: "RS256",
+});
+
+// Main Server Logic
+if (cluster.isMaster) {
+  const numCPUs = os.cpus().length;
+  console.log(`Master process running on PID ${process.pid} with ${numCPUs} CPUs`);
+
+  for (let i = 0; i < numCPUs - 2; i++) {
+    cluster.fork();
+  }
+
+  cluster.on("exit", (worker) => {
+    console.log(`Worker ${worker.process.pid} died. Starting a new worker...`);
+    cluster.fork();
+  });
+} else {
+  const app = express();
+  app.use(express.json());
+  app.use(morgan("dev"));
+  app.use(cors(corsOptions));
+
+
+  app.get("/", (req, res) => {
+    res.status(200).send("Hello World...!!");
+  });
+
+  // Your JWT Check if needed
+  // app.use(jwtCheck);
+
+  app.use('/api/v1/student', require('./routes/studentsRoutes'));
+
+  // HTTPS 
+  https.createServer(credentials, app).listen(8084, () => {
+
+    console.log(`${new Date().toISOString()} - Node.js server is running on https://linux.justdo-it.local:8084`);
+
+  });
+
+// Ensure the uploads directory exists
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+// Configure Multer for file storage
+const storage = multer.diskStorage({
+  destination: uploadDir, // Save images in 'uploads' folder
+  filename: (req, file, cb) => {
+    cb(null, file.fieldname + '-' + Date.now() + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage: storage });
+
+// API endpoint to upload images
+app.post('/upload', upload.single('image'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No image uploaded' });
+  }
+ 
+  res.status(200).json({
+    message: 'Image uploaded successfully!',
+    filePath: `/uploads/${req.file.filename}`, // Relative path to access file
+  });
+});
+
+// Serve static images
+app.use('/uploads', express.static(uploadDir));
+
+  
+
+  // HTTP Server
+  http.createServer(app).listen(8083, () => {
+    console.log(`${new Date().toISOString()} - Node.js server is running on http://linux.justdo-it.local:8083`);
+  });
+}
+console.log('MySQL user:', keys.myUser);

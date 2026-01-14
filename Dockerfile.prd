@@ -1,0 +1,19 @@
+FROM 192.168.0.140:5000/node:22-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+RUN rm -rf node_modules package-lock.json
+COPY ./edge_reasume_certs /certs
+RUN chown -R node:node /certs
+
+USER node
+
+EXPOSE 8083
+EXPOSE 5000
+
+CMD ["npm","run","prod"]

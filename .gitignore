@@ -1,0 +1,63 @@
+Dashboards/prometheus/.prometheus_data/
+Dashboards/prometheus/grafana_storage/
+Dashboards/dbeaver/data-files/.data/
+
+uploads/
+
+.png
+.jpg
+# Node.js dependencies
+node_modules/
+.angular/
+
+
+
+#certs
+.pem
+.crt
+.key
+
+
+.prometheus_data
+
+content_Management_System/
+O
+# Angular build output
+/dist/
+node_module
+out-tsc/
+
+.angular/
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE settings
+.vscode/
+.idea/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Environment files
+#.env
+#.env.*  # Ignore all environment variable files (e.g., .env.local, .env.production, etc.)
+
+# Temporary files
+*.swp
+*.swo
+
+# Coverage directories and files (for testing tools)
+coverage/
+*.lcov
+
+# Other directories or files specific to your project that you want to ignore
+
+# sqlite
+.sqlite

@@ -1,0 +1,6 @@
+name = "nodejs-sweety-sweet"
+compatibility_date = "2025-04-08"
+main = "server.js"
+
+[vars]
+ALLOWED_ORIGINS = '["https://192.168.0.140:4200","https://192.168.0.123:4200","https://linux-hp.local:4200","https://linux-acer.local:4200","https://sweety_acer.justdo-it.uk","https://sweety.justdo-it.uk","cli-app-angular-sweety-sweet.pages.dev"]'
