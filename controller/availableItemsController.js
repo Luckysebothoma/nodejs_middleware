@@ -16,17 +16,24 @@ import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js
 /**
  * Helper utility to normalize/format JavaScript dates or ISO strings into MySQL compatible 'YYYY-MM-DD HH:MM:SS'
  */
+/**
+ * Normalize a JS Date / ISO string / MySQL datetime string into
+ * MySQL DATETIME format: 'YYYY-MM-DD HH:MM:SS' (UTC).
+ */
+const MYSQL_DATETIME_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
 const formatForMySQL = (dateInput) => {
-    if (!dateInput) return formattedDate ? formattedDate() : new Date().toISOString().slice(0, 19).replace('T', ' ');
-    
-    const date = new Date(dateInput);
-    if (isNaN(date.getTime())) {
-        // Fallback if parsing fails entirely, return current date formatted
-        return new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const toUTC = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
+
+    if (dateInput == null || dateInput === '') return toUTC(new Date());
+
+    // Already in MySQL shape — return untouched, never re-parse.
+    if (typeof dateInput === 'string' && MYSQL_DATETIME_RE.test(dateInput.trim())) {
+        return dateInput.trim();
     }
-    
-    // Converts to 'YYYY-MM-DD HH:MM:SS' format required by MySQL
-    return date.toISOString().slice(0, 19).replace('T', ' ');
+
+    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    return isNaN(date.getTime()) ? toUTC(new Date()) : toUTC(date);
 };
 
 const removeAvailableItemsById = async(req, res) =>{

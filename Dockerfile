@@ -1,20 +1,15 @@
-# Node-API DOckerfile
 FROM node:22
 
-USER node
 WORKDIR /app
 
-#COPY ./package.json .
-#COPY . .
-#RUN rm package-lock.json
-#RUN npm install && npm install -g nodemon && npm install express
-#RUN rm -f ./.env
-#RUN rm -f Dockerfile
-#RUN rm -f Dockerfile.dev
-#RUN rm -f docker-compose.yml
-#RUN rm -rf node_modules package-lock.json
-#RUN npm install
+COPY package*.json ./
+RUN npm ci --omit=dev
 
-EXPOSE 8083
-EXPOSE 5000
-CMD ["npm","run","server"]
+COPY . .
+RUN chown -R node:node /app
+USER node
+
+EXPOSE 8080
+EXPOSE 8443
+
+CMD ["node", "index.js"]

@@ -1,0 +1,27 @@
+version: "3.8"
+
+networks:
+  databases:
+    external: true
+
+services:
+  sweety-api:
+    image: 192.168.0.140:5000/sweety-api:${IMAGE_TAG:-latest}
+    env_file:
+      - /2026_db_server_hp/sweety-sweet/nodejs_middleware/.env
+    environment:
+      - TZ=Africa/Johannesburg
+    volumes:
+      - /2026_db_server_hp/sweety-sweet/nodejs_middleware/edge_reasume_certs:/certs:ro
+    ports:
+      - 8183:8443
+      - 8193:8080
+    networks:
+      - databases
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        order: start-first
+        failure_action: rollback
