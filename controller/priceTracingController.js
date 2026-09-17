@@ -1,4 +1,5 @@
-  import ControllerHandler from "../utils/ControllerHandler.js";
+import { formatForMySQL } from '../utils/formatForMySQL.js';
+import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
  import { getConnection } from '../config/db.js';
@@ -16,196 +17,142 @@ const {
 const cacheKey = 'priceTracing'; // Key to store the list in Redis
 let keyExist = false;
 
-const removeEstimateById = async(req, res) =>{
-    logRequestDetails(req, "removeEstimateById");
+const removeEstimateById = async (req, res) => {
 
-    try {
-
-        
-             const productId = req.params.id;
-
-//            const productId = req.params.id;
-         if(!productId){
-         return logResponseDetails(req, res, {
-      status: 404,
-     
-                success:false,
-                message:"PLease provide student Id => " + productId
-            }, cacheKey, 500)
-        }else{
-
-
-            try {
-				
-
-                 const data = await dbSequelize.query('DELETE FROM priceTracing WHERE productId = :productId', {
-                    replacements: { productId }, // Pass the parameter explicitly
-                    type: dbSequelize.QueryTypes.DELETE
-                }); 
-        data.info = cacheKey;
-
-                return logResponseDetails(req, res, {
-      status: 200,
-     
-                    success:true,
-                    message:data
-                }, cacheKey, 200)
-
-
-
-            } catch (error) {
-                console.log(error)
-                return logResponseDetails(req, res, {
-      status: 500,
-     
-                    success:false,
-                    message:"Something happening while trying to delete",
-                    error
-                }, cacheKey, 500)
-                
-            }     
-        
-	 
-			
-        }
-        
-    } catch (error) {
-        console.log(error)
-        return logResponseDetails(req, res, {
-      status: 500,
-     
-            success:false,
-            message: "Error in Deleting Student",
-            error
-        }, cacheKey, 500)
-    }
-
-}
-
-const removePriceTracing = async(req, res) =>{
-    logRequestDetails(req, "removePriceTracing")
-    try {
-
-    const productId = req.body.id;
-        if(!productId){
-         return logResponseDetails(req, res, {
-      status: 404,
-     
-                success:false,
-                message:"PLease provide student Id => " + productId
-            }, cacheKey, 500)
-        }else{
-
-
-try {
-    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
-    const replacements = [cacheKey, productId];
-
-    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
-
-    if (result.affectedRows > 0) {
-        return logResponseDetails(req, res, {
-            success: true,
-            message: `ID [${productId}] deleted successfully`,
-        },cacheKey,200);
-    } else {
-        return logResponseDetails(req, res, {
-            success: false,
-            message: `ID [${productId}] not found in [${cacheKey}]`,
-        },cacheKey,200);
-    }
-
-} catch (error) {
-    return logResponseDetails(req, res, {
-        success: false,
-        message: "Error occurred while trying to delete.",
-        error,
-    }, cacheKey, 500);
-}
-  
-        
-	 
-			
-        }
-        
-    } catch (error) {
-      //  console.log(error)
-        return logResponseDetails(req, res, {
-            success:false,
-            message: "Error in Deleting Student",
-            error
-        }, cacheKey, 500)
-    }
-
-}
-
-const getPriceTracing = async(req, res) =>{
-
-    logRequestDetails(req, "getPriceTracing")
-
- /*   try {
-           // If not in cache, query the database
-            console.log('Cache miss: Querying database');
-        
-            const [data] = await dbSequelize.query('SELECT * FROM priceTracing ')
-
-
-            if (!data) { 
-                return return logResponseDetails(req, res, {
-      status: 404,
-     
-                    success: false,
-                    message: "Resource not found"
-                });
-            } else if (data.length === 0) {
-                return return logResponseDetails(req, res, {
-      status: 200,
-     
-                    success: true,
-                    data: [],
-                    message: "No data available"
-                });
-            }else{
-                
-                const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
-                // Cache the data in Redis (set it for 1 hour)
-
-                // Send the filtered data to the client
-                res.json(objectsOnly);
-            }
-
-
-
-    } catch (error) {
-        console.log(error)
-        return logResponseDetails(req, res, {
-      status: 500,
-     
-            success:false,
-            message:"Error in getting all",
-            error
-        })
-    }
-*/
-
-
-  console.log(`${cacheKey} backend started...`);
-
-  const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
-  const _pgQuery = `SELECT * FROM ${cacheKey}`;
-  console.log("Now Quering : Key[" + cacheKey + "] mysl:[" + _mysqlQuery + "] pgSql:" + _pgQuery + "]");
+  logRequestDetails(req, "removeEstimateById");
 
   try {
 
-    const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-    return logResponseDetails(req, res, data, cacheKey,200);
+    const productId = req.params.id;
 
+    if (!productId) {
+      return logResponseDetails(req, res, {
+        status: 404,
+        success: false,
+        message: "PLease provide student Id => " + productId
+      }, cacheKey, 404)
+    } else {
+
+      try {
+        // NOTE: this previously called `dbSequelize.query(...)` — dbSequelize
+        // was never imported or defined anywhere in this file, so every call
+        // threw ReferenceError before touching the database. Rewritten to use
+        // the same ControllerHandler { pgQuery, mysqlQuery } pattern as the
+        // rest of this file (a pgQuery was also missing entirely).
+        const mysqlQuery = { text: `DELETE FROM ${cacheKey} WHERE productId = ?`, values: [productId] };
+        const pgQuery = { text: `DELETE FROM ${cacheKey} WHERE "productId" = $1`, values: [productId] };
+
+        const data = await removeCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
+        data.info = cacheKey;
+
+        return logResponseDetails(req, res, {
+          status: 200,
+          success: true,
+          message: data
+        }, cacheKey, 200)
+
+      } catch (error) {
+        console.log(error)
+        return logResponseDetails(req, res, {
+          status: 500,
+          success: false,
+          message: "Something happening while trying to delete",
+          error
+        }, cacheKey, 500)
+      }
+    }
+
+  } catch (error) {
+    console.log(error)
+    return logResponseDetails(req, res, {
+      status: 500,
+      success: false,
+      message: "Error in Deleting Student",
+      error
+    }, cacheKey, 500)
+  }
+
+}
+
+const removePriceTracing = async (req, res) => {
+  logRequestDetails(req, "removePriceTracing")
+  try {
+
+    const productId = req.body.id;
+    if (!productId) {
+      // NOTE: body said status 404 but this used to pass 500 as the actual
+      // HTTP status — aligned with the body, matching estimates.js.
+      return logResponseDetails(req, res, {
+        status: 404,
+        success: false,
+        message: "PLease provide student Id => " + productId
+      }, cacheKey, 404)
+    } else {
+
+      try {
+        // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+        // { text, values } specs, not positional (query, replacements) args.
+        // The old query also used a `??` identifier placeholder for the
+        // table name with cacheKey stuffed into replacements — switched to
+        // the same trusted-template-literal convention used everywhere else
+        // in this codebase, and added the missing pgQuery.
+        const mysqlQuery = { text: `DELETE FROM ${cacheKey} WHERE productId = ?`, values: [productId] };
+        const pgQuery = { text: `DELETE FROM ${cacheKey} WHERE "productId" = $1`, values: [productId] };
+
+        const result = await removeCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
+
+        if (result.affectedRows > 0) {
+          return logResponseDetails(req, res, {
+            success: true,
+            message: `ID [${productId}] deleted successfully`,
+          }, cacheKey, 200);
+        } else {
+          return logResponseDetails(req, res, {
+            success: false,
+            message: `ID [${productId}] not found in [${cacheKey}]`,
+          }, cacheKey, 200);
+        }
+
+      } catch (error) {
+        return logResponseDetails(req, res, {
+          success: false,
+          message: "Error occurred while trying to delete.",
+          error,
+        }, cacheKey, 500);
+      }
+    }
+
+  } catch (error) {
+    return logResponseDetails(req, res, {
+      success: false,
+      message: "Error in Deleting Student",
+      error
+    }, cacheKey, 500)
+  }
+
+}
+
+const getPriceTracing = async (req, res) => {
+
+  logRequestDetails(req, "getPriceTracing")
+
+  console.log(`${cacheKey} backend started...`);
+
+  // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+  // { text, values } specs, not positional (mysqlQuery, pgQuery) args.
+  const mysqlQuery = { text: `SELECT * FROM ${cacheKey}` };
+  const pgQuery = { text: `SELECT * FROM ${cacheKey}` };
+  console.log("Now Quering : Key[" + cacheKey + "] mysl:[" + mysqlQuery.text + "] pgSql:" + pgQuery.text + "]");
+
+  try {
+
+    const data = await getCachedOrQuery(cacheKey, { pgQuery, mysqlQuery });
+    return logResponseDetails(req, res, data, cacheKey, 200);
 
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
     return logResponseDetails(req, res, {
       status: 500,
-     
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
@@ -214,205 +161,236 @@ const getPriceTracing = async(req, res) =>{
 }
 
 // Adding to Pricing Table
-const addPriceTracing  = async(req, res) => {
+const addPriceTracing = async (req, res) => {
 
-    logRequestDetails(req, "addPriceTracing")
+  logRequestDetails(req, "addPriceTracing")
 
-    try {
+  try {
 
-        /*
-                productId: number;
+    /*
+            productId: number;
     estimatedSelling:number;
     actualSelling:number;
     lastUpdated:Date;
         */
 
 
-        const { productId, accAmount ,_lastUpdated} = req.body;
-        const lastUpdated = formatForMySQL(_lastUpdated);
+    const { productId, accAmount, _lastUpdated } = req.body;
+    const lastUpdated = formatForMySQL(_lastUpdated);
 
-        console.log("id =>" +productId);
-        console.log("accAmount => " + accAmount);
-        console.log("lastUpdated => " + lastUpdated);
-       
+    console.log("id =>" + productId);
+    console.log("accAmount => " + accAmount);
+    console.log("lastUpdated => " + lastUpdated);
 
-        if( productId == null ||  accAmount== null ||  lastUpdated== null
-            || productId == undefined ||  accAmount== undefined ||  lastUpdated== undefined
-        
-        ){
-         return logResponseDetails(req, res, {
-      status: 500,
-     
-                success:false,
-                message:"PLease Provide all fields"
-            }, cacheKey, 500)
+    if (productId == null || accAmount == null || lastUpdated == null) {
+      return logResponseDetails(req, res, {
+        status: 500,
+        success: false,
+        message: "PLease Provide all fields"
+      }, cacheKey, 500)
 
-        }else{
-            
-        const query = `
-            INSERT INTO ${cacheKey} (productId, date, accAmount)
-            VALUES (?, ?, ?)
-            ON DUPLICATE KEY UPDATE
+    } else {
+
+      // Upsert on both tiers, so re-sending the same productId updates
+      // rather than throwing a duplicate-key error.
+      const mysqlQuery = {
+        text: `
+          INSERT INTO ${cacheKey} (productId, date, accAmount)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE
             accAmount = VALUES(accAmount),
-            date = VALUES(date);
-        `;
-        // Parameterized query with replacements
-        const replacements = [productId,lastUpdated,accAmount];
+            date = VALUES(date)
+        `,
+        values: [productId, lastUpdated, accAmount],
+      };
 
-        // Execute the query
-        addCachedAndQuery(cacheKey,query , replacements)
-        
-        
-        }
-    } catch (error) {
-        console.log(error)
-        return logResponseDetails(req, res, {
-      status: 404,
-     
-            success:false,
-            message:"Error in create Student API ",
-            error
-        }, cacheKey, 404)
+      // NOTE: "date" is a reserved word in Postgres, so it — along with the
+      // other camelCase columns — needs to be quoted.
+      const pgQuery = {
+        text: `
+          INSERT INTO ${cacheKey} ("productId", "date", "accAmount")
+          VALUES ($1, $2, $3)
+          ON CONFLICT ("productId") DO UPDATE SET
+            "accAmount" = EXCLUDED."accAmount",
+            "date" = EXCLUDED."date"
+        `,
+        values: [productId, lastUpdated, accAmount],
+      };
+
+      // NOTE: this call was previously fired without `await`, its result was
+      // never checked, and no response was ever sent back to the client —
+      // the request would hang until it timed out. Both are fixed here.
+      const result = await addCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
+
+      return logResponseDetails(req, res, {
+        success: true,
+        message: `[${productId}] added/updated successfully`,
+        result,
+      }, cacheKey, 200)
 
     }
+  } catch (error) {
+    console.log(error)
+    return logResponseDetails(req, res, {
+      status: 404,
+      success: false,
+      message: "Error in create Student API ",
+      error
+    }, cacheKey, 404)
+
+  }
 
 }
 
 //deletins
 
 const deletePriceTracing = async (req, res) => {
-     logRequestDetails(req, "deletePriceTracing")
-    const productId = req.params.id;
+  logRequestDetails(req, "deletePriceTracing")
+  const productId = req.params.id;
 
-    console.log(`[deletePriceTracing] Requested deletion for productId: ${productId}`);
+  console.log(`[deletePriceTracing] Requested deletion for productId: ${productId}`);
 
-    if (!productId || isNaN(productId)) {
-        return res.status(400).json({
-            success: false,
-            message: `Invalid or missing productId: ${productId}`
-        });
-    }
+  if (!productId || isNaN(productId)) {
+    // NOTE: was a raw res.status().json() call that skipped logResponseDetails
+    // entirely, unlike every other endpoint in this file. Routed through
+    // logResponseDetails for consistent logging/response handling.
+    return logResponseDetails(req, res, {
+      status: 400,
+      success: false,
+      message: `Invalid or missing productId: ${productId}`
+    }, cacheKey, 400);
+  }
 
-try {
-    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
-    const replacements = [cacheKey, productId];
+  try {
+    // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+    // { text, values } specs, not positional (query, replacements) args.
+    // The old query also used a `??` identifier placeholder for the table
+    // name with cacheKey stuffed into replacements, and had no pgQuery.
+    const mysqlQuery = { text: `DELETE FROM ${cacheKey} WHERE productId = ?`, values: [productId] };
+    const pgQuery = { text: `DELETE FROM ${cacheKey} WHERE "productId" = $1`, values: [productId] };
 
-    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
+    const result = await removeCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
 
     if (result.affectedRows > 0) {
-        res.status(200).send({
-            success: true,
-            message: `ID [${productId}] deleted successfully`,
-        });
+      return logResponseDetails(req, res, {
+        status: 200,
+        success: true,
+        message: `ID [${productId}] deleted successfully`,
+      }, cacheKey, 200);
     } else {
-        res.status(404).send({
-            success: false,
-            message: `ID [${productId}] not found in [${cacheKey}]`,
-        });
+      return logResponseDetails(req, res, {
+        status: 404,
+        success: false,
+        message: `ID [${productId}] not found in [${cacheKey}]`,
+      }, cacheKey, 404);
     }
 
-} catch (error) {
+  } catch (error) {
     console.error(error);
-    res.status(500).send({
-        success: false,
-        message: "Error occurred while trying to delete.",
-        error,
-    });
-}
-
+    return logResponseDetails(req, res, {
+      status: 500,
+      success: false,
+      message: "Error occurred while trying to delete.",
+      error,
+    }, cacheKey, 500);
+  }
 
 };
 
 // UPdating 
 
-const updatePriceTracing = async(req, res) => {
-    logRequestDetails(req, "updatePriceTracing")
-    //        const { productId, accAmount ,lastUpdated} = req.body;
+const updatePriceTracing = async (req, res) => {
+  logRequestDetails(req, "updatePriceTracing")
 
-    const { productId, accAmount ,_lastUpdated} = req.body;
-    const lastUpdated = formatForMySQL(_lastUpdated);
-    console.log("++  updatePriceTracing ++ ");
-    console.log("id =>" +productId);
-    console.log("accAmount => " + accAmount);
-    console.log("lastUpdated => " + lastUpdated);
+  const { productId, accAmount, _lastUpdated } = req.body;
+  const lastUpdated = formatForMySQL(_lastUpdated);
+  console.log("++  updatePriceTracing ++ ");
+  console.log("id =>" + productId);
+  console.log("accAmount => " + accAmount);
+  console.log("lastUpdated => " + lastUpdated);
 
-    try {
+  try {
 
+    if (productId == null || accAmount == null || lastUpdated == null) {
 
+      console.log("id =>" + productId);
+      console.log("accAmount => " + accAmount);
+      console.log("lastUpdated => " + lastUpdated);
 
-        if(
-            productId == null ||  accAmount== null ||  lastUpdated== null
-            || productId == undefined ||  accAmount== undefined ||  lastUpdated== undefined
-        ){
+      // NOTE: body said status 404 but this used to pass 500 as the actual
+      // HTTP status — aligned with the body, matching estimates.js.
+      return logResponseDetails(req, res, {
+        status: 404,
+        success: false,
+        message: "Invalid IR Or provide id => " + productId
+      }, cacheKey, 404)
 
-            console.log("id =>" +productId);
-            console.log("accAmount => " + accAmount);
-            console.log("lastUpdated => " + lastUpdated);
+    } else {
 
-         return logResponseDetails(req, res, {
-      status: 404,
-     
-                success:false,
-                message:"Invalid IR Or provide id => "+ productId
-            }, cacheKey, 500)
+      try {
+        // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+        // { text, values } specs, not positional (query, replacements) args.
+        // A pgQuery was already being built below but never actually passed
+        // through — Postgres was never updated. Wired it in and quoted the
+        // camelCase/reserved-word columns.
+        const mysqlQuery = {
+          text: `UPDATE ${cacheKey} SET accAmount = ?, date = ? WHERE productId = ?`,
+          values: [accAmount, lastUpdated, productId],
+        };
+        const pgQuery = {
+          text: `UPDATE ${cacheKey} SET "accAmount" = $1, "date" = $2 WHERE "productId" = $3`,
+          values: [accAmount, lastUpdated, productId],
+        };
 
-        }else{
+        const result = await updateCachedOrQuery(cacheKey, { pgQuery, mysqlQuery });
 
-            try {
-                // Prepare SQL queries for both MySQL and PostgreSQL
-                const mysqlQuery = `UPDATE ${cacheKey} SET accAmount = ?, date = ? WHERE productId = ?`;
-                const pgQuery = `UPDATE ${cacheKey} SET accAmount = $1, date = $2 WHERE productId = $3`;
-                const replacements = [accAmount, lastUpdated, productId];
+        console.log('✅ priceTracing updated successfully:', result);
 
-                const result = await updateCachedOrQuery(cacheKey, mysqlQuery, replacements);
-
-                console.log('✅ priceTracing updated successfully:', result);
-
-                // Check if any rows were affected/updated
-                if (
-                    !result ||
-                    (typeof result.affectedRows === 'number' && result.affectedRows === 0) ||
-                    (typeof result.rowCount === 'number' && result.rowCount === 0)
-                ) {
-                    return logResponseDetails(req, res, {
-                        status: 404,
-                        success: false,
-                        message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
-                        result
-                    }, cacheKey, 500);
-                } else {
-                    return logResponseDetails(req, res, {
-                        status: 200,
-                        success: true,
-                        message: "✅ priceTracing updated successfully",
-                        result
-                    }, cacheKey, 200);
-                }
-            } catch (error) {
-                console.error('❌ Error updating priceTracing:', error);
-                return logResponseDetails(req, res, {
-                    status: 500,
-                    success: false,
-                    message: "Something went wrong while updating the record.",
-                    error
-                }, cacheKey, 500);
-            }
-
+        // Check if any rows were affected/updated
+        if (
+          !result ||
+          (typeof result.affectedRows === 'number' && result.affectedRows === 0) ||
+          (typeof result.rowCount === 'number' && result.rowCount === 0)
+        ) {
+          // NOTE: body said status 404 but this used to pass 500 as the
+          // actual HTTP status — aligned with the body, matching estimates.js.
+          return logResponseDetails(req, res, {
+            status: 404,
+            success: false,
+            message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
+            result
+          }, cacheKey, 404);
+        } else {
+          return logResponseDetails(req, res, {
+            status: 200,
+            success: true,
+            message: "✅ priceTracing updated successfully",
+            result
+          }, cacheKey, 200);
         }
-        
-    } catch (error) {
-        
-                    
+      } catch (error) {
+        console.error('❌ Error updating priceTracing:', error);
         return logResponseDetails(req, res, {
-      status: 500,
-     
-            success:false,
-            message:"Error in Update Student API", 
-            error
-        }, cacheKey, 500)
+          status: 500,
+          success: false,
+          message: "Something went wrong while updating the record.",
+          error
+        }, cacheKey, 500);
+      }
+
     }
+
+  } catch (error) {
+
+    return logResponseDetails(req, res, {
+      status: 500,
+      success: false,
+      message: "Error in Update Student API",
+      error
+    }, cacheKey, 500)
+  }
 }
 
 
 
-export default {removePriceTracing, removeEstimateById, getPriceTracing ,addPriceTracing , deletePriceTracing , updatePriceTracing }
+export default { removePriceTracing, removeEstimateById, getPriceTracing, addPriceTracing, deletePriceTracing, updatePriceTracing }

@@ -1,4 +1,3 @@
-
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
@@ -16,72 +15,28 @@ const {
 
 const cacheKey = 'productPricing'; // Key to store the list in Redis
 
-const getPricingList = async(req, res) =>{
-    logRequestDetails(req, "getPricingList")
-/*    try {
+const getPricingList = async (req, res) => {
+  logRequestDetails(req, "getPricingList")
 
-        // If not in cache, query the database
-        console.log('Cache Missed: from '+  cacheKey);
-        const [data] = await dbSequelize.query('SELECT * FROM productPricing')
-        if (!data) { 
-            return return logResponseDetails(req, res, {
-      status: 404,
-     
-                success: false,
-                message: "Resource not found"
-            });
-        } else if (data.length === 0) {
-            return return logResponseDetails(req, res, {
-      status: 200,
-     
-                success: true,
-                data: [],
-                message: "No data available"
-            });
-        }else{
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
+  console.log(`${cacheKey} backend started...`);
 
-                if(objectsOnly){
-                    
-
-                    // Send the filtered data to the client
-                    res.json(objectsOnly);
-                }else{
-
-                    console.log("Something wrong with storing cache for ", cacheKey);
-                }
-        } 
-
-    } catch (error) {
-        console.log(error)
-        return logResponseDetails(req, res, {
-      status: 500,
-     
-            success:false,
-            message:"Error in getting all",
-            error
-        })
-    }
-*/
-
- console.log(`${cacheKey} backend started...`);
-
-  const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
-  const _pgQuery = `SELECT * FROM ${cacheKey}`;
-  console.log("Now Quering : Key[" + cacheKey + "] mysl:[" + _mysqlQuery + "] pgSql:" + _pgQuery + "]");
+  // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+  // { text, values } specs, not positional (mysqlQuery, pgQuery) args.
+  const mysqlQuery = { text: `SELECT * FROM ${cacheKey}` };
+  const pgQuery = { text: `SELECT * FROM ${cacheKey}` };
+  console.log("Now Quering : Key[" + cacheKey + "] mysl:[" + mysqlQuery.text + "] pgSql:" + pgQuery.text + "]");
 
   try {
 
-    const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
+    const data = await getCachedOrQuery(cacheKey, { pgQuery, mysqlQuery });
     data.info = cacheKey;
 
-    logResponseDetails(req, res, data, cacheKey,200);
+    return logResponseDetails(req, res, data, cacheKey, 200);
 
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
     return logResponseDetails(req, res, {
       status: 500,
-     
       success: false,
       message: `Error fetching ${cacheKey}`,
       error: error.message || error,
@@ -92,65 +47,89 @@ const getPricingList = async(req, res) =>{
 }
 
 // Adding to Pricing Table
-const add2Pricing = async(req, res) => {
-    logRequestDetails(req, "add2Pricing")
-    try {
-        const { productId, costPerItem,sellingPrice,productCommission, productProfit, productQuantity, productSize} = req.body;
+const add2Pricing = async (req, res) => {
+  logRequestDetails(req, "add2Pricing")
+  try {
+    const { productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize } = req.body;
 
-        console.log("id =>" +productId);
-        console.log("costPerItem => " + costPerItem);
-        console.log("sellingPrice  => " + sellingPrice);
-        console.log("productCommission => " + productCommission);
-        console.log("productProfit =>" +productProfit);
-        console.log("productQuantity => " + productQuantity);
-        console.log("productSize  => " + productSize);
-       
+    console.log("id =>" + productId);
+    console.log("costPerItem => " + costPerItem);
+    console.log("sellingPrice  => " + sellingPrice);
+    console.log("productCommission => " + productCommission);
+    console.log("productProfit =>" + productProfit);
+    console.log("productQuantity => " + productQuantity);
+    console.log("productSize  => " + productSize);
 
-        if(
-            productId ==null || costPerItem==null || sellingPrice==null || productCommission==null ||  productProfit ==null ||  productQuantity==null ||  productSize==null 
-            || productId==undefined || costPerItem==undefined || sellingPrice==undefined || productCommission==undefined ||  productProfit ==undefined ||  productQuantity==undefined ||  productSize==undefined 
+    if (
+      productId == null || costPerItem == null || sellingPrice == null || productCommission == null ||
+      productProfit == null || productQuantity == null || productSize == null
+    ) {
+      return logResponseDetails(req, res, {
+        status: 500,
+        success: false,
+        message: "PLease Provide all fields"
+      }, cacheKey, 500)
 
-        ){
-         return logResponseDetails(req, res, {
-      status: 500,
-     
-                success:false,
-                message:"PLease Provide all fields"
-            }, cacheKey, 500)
+    } else {
 
-        }else{
+      // NOTE: this query was missing the `ON DUPLICATE KEY UPDATE` keyword —
+      // the `columnName = VALUES(...)` lines were dangling straight after
+      // `VALUES (?, ?, ...)` with nothing introducing them, which is a SQL
+      // syntax error on every call. Added the missing keyword and, since
+      // this is an upsert, added the matching pgQuery (it didn't exist at
+      // all before).
+      const mysqlQuery = {
+        text: `
+          INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            costPerItem = VALUES(costPerItem),
+            sellingPrice = VALUES(sellingPrice),
+            productCommission = VALUES(productCommission),
+            productProfit = VALUES(productProfit),
+            productQuantity = VALUES(productQuantity),
+            productSize = VALUES(productSize)
+        `,
+        values: [productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize],
+      };
 
-        // SQL INSERT statement with ON DUPLICATE KEY UPDATE
-        const query = `
-            INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-                costPerItem = VALUES(costPerItem),
-                sellingPrice = VALUES(sellingPrice),
-                productCommission = VALUES(productCommission),
-                productProfit = VALUES(productProfit),
-                productQuantity = VALUES(productQuantity),
-                productSize = VALUES(productSize)
-        `;
+      const pgQuery = {
+        text: `
+          INSERT INTO productPricing ("productId", "costPerItem", "sellingPrice", "productCommission", "productProfit", "productQuantity", "productSize")
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT ("productId") DO UPDATE SET
+            "costPerItem" = EXCLUDED."costPerItem",
+            "sellingPrice" = EXCLUDED."sellingPrice",
+            "productCommission" = EXCLUDED."productCommission",
+            "productProfit" = EXCLUDED."productProfit",
+            "productQuantity" = EXCLUDED."productQuantity",
+            "productSize" = EXCLUDED."productSize"
+        `,
+        values: [productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize],
+      };
 
-        // Parameterized query with replacements
-        const replacements = [productId, costPerItem,sellingPrice,productCommission, productProfit, productQuantity, productSize];
+      // NOTE: this call was previously fired without `await`, its result was
+      // never checked, and no response was ever sent back to the client —
+      // the request would hang until it timed out. Both are fixed here.
+      const result = await addCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
 
-        // Execute the query
-        addCachedAndQuery(cacheKey,  query , replacements);
-        
-        
-        }
-    } catch (error) {
-        console.log(error)
-        return logResponseDetails(req, res, {
-      status: 404,
-     
-            success:false,
-            message:"Error in create Student API ",
-            error
-        }, cacheKey, 500)
-        
+      return logResponseDetails(req, res, {
+        success: true,
+        message: `[${productId}] added/updated successfully`,
+        result,
+      }, cacheKey, 200)
+
     }
+  } catch (error) {
+    console.log(error)
+    return logResponseDetails(req, res, {
+      status: 404,
+      success: false,
+      message: "Error in create Student API ",
+      error
+    }, cacheKey, 500)
+
+  }
 
 }
 
@@ -169,397 +148,431 @@ JOIN
 
 //Merge the tables
 
-const getYummyList = async(req, res) =>{
-    logRequestDetails(req, "getYummyList")
-/*    try {
-        
-        const [data] = 
-        await dbSequelize.
-        query('SELECT productList.productId, productList.productName AS column1_table1, productList.productFlavor AS column2_table1, productList.productPrice AS column1_table1, productPricing.costPerItem AS column1_table2, productPricing.sellingPrice AS column2_table2 , productPricing.productCommission AS column2_table2 , productPricing.productProfit AS column2_table2 , productPricing.productQuantity AS column2_table2 , productPricing.productSize AS column2_table2 FROM productList JOIN productPricing ON productList.productId = productPricing.productId')
+const getYummyList = async (req, res) => {
+  logRequestDetails(req, "getYummyList")
 
-        if(!data){
-            return return logResponseDetails(req, res, {
-      status: 404,
-     
-                success:false,
-                message:"No Pricing Found"
-            })
-        }else{
-            
-            const objectsOnly = data.filter(item => typeof item === 'object' && !Array.isArray(item));
+  const yummyCacheKey = 'yummyList';
+  console.log(`${yummyCacheKey} backend started...`);
 
-            // Send the filtered data to the client
-            res.json(objectsOnly);
-        }
+  const mysqlQuery = {
+    text: `
+      SELECT 
+          productList.productId, 
+          productList.productName, 
+          productList.productFlavor, 
+          productList.productPrice, 
+          productPricing.costPerItem, 
+          productPricing.sellingPrice, 
+          productPricing.productCommission, 
+          productPricing.productProfit, 
+          productPricing.productQuantity, 
+          productPricing.productSize 
+      FROM productList 
+      JOIN productPricing ON productList.productId = productPricing.productId
+    `,
+  };
+  // NOTE: this used to reuse the mysql query string as-is for Postgres. Its
+  // camelCase columns were unquoted, which Postgres folds to lowercase —
+  // silently mismatching the real columns. Given its own quoted version.
+  const pgQuery = {
+    text: `
+      SELECT 
+          productList."productId", 
+          productList."productName", 
+          productList."productFlavor", 
+          productList."productPrice", 
+          productPricing."costPerItem", 
+          productPricing."sellingPrice", 
+          productPricing."productCommission", 
+          productPricing."productProfit", 
+          productPricing."productQuantity", 
+          productPricing."productSize" 
+      FROM productList 
+      JOIN productPricing ON productList."productId" = productPricing."productId"
+    `,
+  };
+  console.log("Now Quering : Key[" + yummyCacheKey + "] mysl:[" + mysqlQuery.text + "] pgSql:" + pgQuery.text + "]");
 
-    } catch (error) {
-        console.log(error)
-        return logResponseDetails(req, res, {
-      status: 500,
-     
-            success:false,
-            message:"Error in getting all",
-            error
-        })
-    }
-*/
-
-const yummyCacheKey = 'yummyList';
-console.log(`${yummyCacheKey} backend started...`);
-
-const _mysqlQuery = `
-    SELECT 
-        productList.productId, 
-        productList.productName, 
-        productList.productFlavor, 
-        productList.productPrice, 
-        productPricing.costPerItem, 
-        productPricing.sellingPrice, 
-        productPricing.productCommission, 
-        productPricing.productProfit, 
-        productPricing.productQuantity, 
-        productPricing.productSize 
-    FROM productList 
-    JOIN productPricing ON productList.productId = productPricing.productId
-`;
-const _pgQuery = _mysqlQuery;
-console.log("Now Quering : Key[" + yummyCacheKey + "] mysl:[" + _mysqlQuery + "] pgSql:" + _pgQuery + "]");
-
-try {
-    const data = await getCachedOrQuery(yummyCacheKey, _mysqlQuery, _pgQuery);
+  try {
+    const data = await getCachedOrQuery(yummyCacheKey, { pgQuery, mysqlQuery });
+    // NOTE: these two logResponseDetails calls were logging under `cacheKey`
+    // ('productPricing') instead of `yummyCacheKey`, filing this endpoint's
+    // logs under the wrong key.
     return logResponseDetails(req, res, {
       status: 200,
-     
-        success: true,
-        data,
-    }, cacheKey, 200);
-} catch (error) {
+      success: true,
+      data,
+    }, yummyCacheKey, 200);
+  } catch (error) {
     console.error(`getCachedOrQuery error for ${yummyCacheKey}:`, error);
     return logResponseDetails(req, res, {
       status: 500,
-     
-        success: false,
-        message: `Error fetching ${yummyCacheKey}`,
-        error: error.message || error,
-    }, cacheKey, 500);
-}
+      success: false,
+      message: `Error fetching ${yummyCacheKey}`,
+      error: error.message || error,
+    }, yummyCacheKey, 500);
+  }
 
 }
 
 //deletins
 
-const deletePricing = async(req, res) =>{
-    logRequestDetails(req, "deletePricing");
+const deletePricing = async (req, res) => {
+  logRequestDetails(req, "deletePricing");
 
-    const productId = req.body.id;
-    try {
+  const productId = req.body.id;
+  try {
 
-                console.log(formattedDate() + "ID Pricing to delte: " + productId);
-
-
-        if(!productId){
-         return logResponseDetails(req, res, {
-      status: 404,
-     
-                success:false,
-                message:"PLease provide student Id => " + productId
-            }, cacheKey, 500)
-        }else{
+    console.log(formattedDate() + "ID Pricing to delte: " + productId);
 
 
-try {
-    const mysqlQuery = `DELETE FROM ?? WHERE productId = ?`;
-    const replacements = [cacheKey, productId];
+    if (!productId) {
+      return logResponseDetails(req, res, {
+        status: 404,
+        success: false,
+        message: "PLease provide student Id => " + productId
+      }, cacheKey, 500)
+    } else {
 
-    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
+      try {
+        // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+        // { text, values } specs, not positional (query, replacements) args.
+        // The old query also used a `??` identifier placeholder for the
+        // table name with cacheKey stuffed into replacements, and had no
+        // pgQuery. This also used to bypass logResponseDetails entirely
+        // with raw res.status().send(obj, cacheKey, code) calls — res.send()
+        // only takes one argument, so the trailing cacheKey/code were
+        // silently dropped every time. Routed through logResponseDetails
+        // like every other endpoint in this file.
+        const mysqlQuery = { text: `DELETE FROM ${cacheKey} WHERE productId = ?`, values: [productId] };
+        const pgQuery = { text: `DELETE FROM ${cacheKey} WHERE "productId" = $1`, values: [productId] };
 
-    if (result.affectedRows > 0) {
-        res.status(200).send({
+        const result = await removeCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
+
+        if (result.affectedRows > 0) {
+          return logResponseDetails(req, res, {
+            status: 200,
             success: true,
             message: `ID [${productId}] deleted successfully`,
-       }, cacheKey, 200);
-    } else {
-        res.status(404).send({
+          }, cacheKey, 200);
+        } else {
+          return logResponseDetails(req, res, {
+            status: 404,
             success: false,
             message: `ID [${productId}] not found in [${cacheKey}]`,
-       }, cacheKey, 500);
+          }, cacheKey, 404);
+        }
+
+      } catch (error) {
+        console.error(error);
+        return logResponseDetails(req, res, {
+          status: 500,
+          success: false,
+          message: "Error occurred while trying to delete.",
+          error,
+        }, cacheKey, 500);
+      }
+
     }
 
-} catch (error) {
-    console.error(error);
-    res.status(500).send({
-        success: false,
-        message: "Error occurred while trying to delete.",
-        error,
-   }, cacheKey, 500);
-}
- 
-        
-	 
-			
-        }
-        
-    } catch (error) {
-        console.log(error)
-        return logResponseDetails(req, res, {
+  } catch (error) {
+    console.log(error)
+    return logResponseDetails(req, res, {
       status: 500,
-     
-            success:false,
-            message: "Error in Deleting Student",
-            error
-        }, cacheKey, 500)
-    }
+      success: false,
+      message: "Error in Deleting Student",
+      error
+    }, cacheKey, 500)
+  }
 
 }
 
 // UPdating 
 
-const updateProductPricing= async(req, res) => {
-    logRequestDetails(req, "updateProductPricing");
-/*
-export interface ProductPricing{
+const updateProductPricing = async (req, res) => {
+  logRequestDetails(req, "updateProductPricing");
+  /*
+  export interface ProductPricing{
 
-    productId:number;
-    productSize:number;
-    productQuantity:number;
-    costPerItem:number;
-    productProfit:number;
-    sellingPrice:number;
-    productCommission:number;
+      productId:number;
+      productSize:number;
+      productQuantity:number;
+      costPerItem:number;
+      productProfit:number;
+      sellingPrice:number;
+      productCommission:number;
 
-}
+  }
 
-*/
+  */
 
-    //const productId  = req.params.id; // Extract student ID from the request URL
+  //const productId  = req.params.id; // Extract student ID from the request URL
 
 
-    const { 
-        costPerItem,productCommission, productId, itemGrouping,
-        productProfit, productQuantity, productSize, sellingPrice
-    
-        } = req.body;
+  const {
+    costPerItem, productCommission, productId, itemGrouping,
+    productProfit, productQuantity, productSize, sellingPrice
 
-        if(
-            productId ==null || costPerItem==null || sellingPrice==null || productCommission==null ||  productProfit ==null ||  productQuantity==null ||  productSize==null 
-            || productId==undefined || costPerItem==undefined || sellingPrice==undefined || productCommission==undefined ||  productProfit ==undefined ||  productQuantity==undefined ||  productSize==undefined 
-        ){
-            console.log ("ERROR ->> Error ");    
-            console.log (" productId[" + productId + "]")
-            console.log( " costPerItem[" + costPerItem + "]")
-            console.log( " sellingPrice[" + sellingPrice + "]")
-            console.log( " productCommission[" + productCommission + "]")
-            console.log( " productProfit[" + productProfit + "]")
-            console.log( " productQuantity[" + productQuantity + "]")
-            console.log( " productSize[" + productSize + "]")
-            console.log( " itemGrouping[" + itemGrouping + "]")
+  } = req.body;
 
-            console.log( " **************************************************")
-    
-    
-         return logResponseDetails(req, res, {
-      status: 500,
-     
-                success:false,
-                message:"PLease Provide all fields"
-           }, cacheKey, 500)
+  try {
 
-            
-        }else{
-            console.log ("SUCCESSFULLY READ");    
-            console.log (" productId[" + productId + "]")
-            console.log( " costPerItem[" + costPerItem + "]")
-            console.log( " sellingPrice[" + sellingPrice + "]")
-            console.log( " productCommission[" + productCommission + "]")
-            console.log( " productProfit[" + productProfit + "]")
-            console.log( " productQuantity[" + productQuantity + "]")
-            console.log( " productSize[" + productSize + "]")
-            console.log( " itemGrouping[" + itemGrouping + "]")
+    if (
+      productId == null || costPerItem == null || sellingPrice == null || productCommission == null ||
+      productProfit == null || productQuantity == null || productSize == null
+    ) {
+      console.log("ERROR ->> Error ");
+      console.log(" productId[" + productId + "]")
+      console.log(" costPerItem[" + costPerItem + "]")
+      console.log(" sellingPrice[" + sellingPrice + "]")
+      console.log(" productCommission[" + productCommission + "]")
+      console.log(" productProfit[" + productProfit + "]")
+      console.log(" productQuantity[" + productQuantity + "]")
+      console.log(" productSize[" + productSize + "]")
+      console.log(" itemGrouping[" + itemGrouping + "]")
 
-            console.log( " **************************************************")
-    
-                /* Sql STatement to UPdate */
+      console.log(" **************************************************")
 
-                try {
-    // Construct the SQL UPDATE statement with replacements
-    const query = `UPDATE productPricing SET costPerItem = ?, sellingPrice = ?, productCommission = ?, productProfit = ?,productQuantity = ?,productSize = ?,itemGrouping = ? WHERE productId = ?`;
-    const replacements = [
-        costPerItem,
-        sellingPrice,
-        productCommission,
-        productProfit,
-        productQuantity,
-        productSize,
-        itemGrouping,
-        productId
-    ];
 
-    console.log('Updating productPricing with replacements:', replacements);
+      return logResponseDetails(req, res, {
+        status: 500,
+        success: false,
+        message: "PLease Provide all fields"
+      }, cacheKey, 500)
 
-    let result;
-    try {
-        result = await updateCachedOrQuery(cacheKey, query, replacements);
-        console.log('✅ productItemPricing updated successfully:', result);
-    } catch (error) {
-        console.error('❌ Error updating productItemPricing:', error);
-        throw error;
-    }
+
+    } else {
+      console.log("SUCCESSFULLY READ");
+      console.log(" productId[" + productId + "]")
+      console.log(" costPerItem[" + costPerItem + "]")
+      console.log(" sellingPrice[" + sellingPrice + "]")
+      console.log(" productCommission[" + productCommission + "]")
+      console.log(" productProfit[" + productProfit + "]")
+      console.log(" productQuantity[" + productQuantity + "]")
+      console.log(" productSize[" + productSize + "]")
+      console.log(" itemGrouping[" + itemGrouping + "]")
+
+      console.log(" **************************************************")
+
+      /* Sql STatement to UPdate */
+
+      try {
+        // NOTE: this used to only build a mysqlQuery and call
+        // updateCachedOrQuery(cacheKey, query, replacements) — no pgQuery
+        // existed at all, so Postgres was never updated. Added it, quoted.
+        const mysqlQuery = {
+          text: `UPDATE productPricing SET costPerItem = ?, sellingPrice = ?, productCommission = ?, productProfit = ?,productQuantity = ?,productSize = ?,itemGrouping = ? WHERE productId = ?`,
+          values: [
+            costPerItem,
+            sellingPrice,
+            productCommission,
+            productProfit,
+            productQuantity,
+            productSize,
+            itemGrouping,
+            productId
+          ],
+        };
+        const pgQuery = {
+          text: `UPDATE productPricing SET "costPerItem" = $1, "sellingPrice" = $2, "productCommission" = $3, "productProfit" = $4, "productQuantity" = $5, "productSize" = $6, "itemGrouping" = $7 WHERE "productId" = $8`,
+          values: [
+            costPerItem,
+            sellingPrice,
+            productCommission,
+            productProfit,
+            productQuantity,
+            productSize,
+            itemGrouping,
+            productId
+          ],
+        };
+
+        console.log('Updating productPricing with replacements:', mysqlQuery.values);
+
+        let result;
+        try {
+          result = await updateCachedOrQuery(cacheKey, { pgQuery, mysqlQuery });
+          console.log('✅ productItemPricing updated successfully:', result);
+        } catch (error) {
+          console.error('❌ Error updating productItemPricing:', error);
+          throw error;
+        }
         // respond with result
         // Check if result is valid and rows were affected
         if (!result || (typeof result.affectedRows === 'number' && result.affectedRows === 0) || (typeof result.rowCount === 'number' && result.rowCount === 0)) {
-            return logResponseDetails(req, res, {
+          // NOTE: body said status 404 but this used to pass 500 as the
+          // actual HTTP status — aligned with the body (and with
+          // updateEstimates' equivalent, near-identical branch).
+          return logResponseDetails(req, res, {
             status: 404,
             success: false,
             message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
             result
-           }, cacheKey, 500);
+          }, cacheKey, 404);
         } else {
-            return logResponseDetails(req, res, {
+          return logResponseDetails(req, res, {
             status: 200,
             success: true,
             message: "✅ Available items updated successfully",
             result
-           }, cacheKey, 200);
-        } 
-
-                } catch (error) {
-                    console.log(error);
-                    return logResponseDetails(req, res, {
-      status: 500,
-     
-                        success:false,
-                        message:"Something wrong happened while updating the record \n _name" + _name + " _flavor" +_flavor + " _price" + _price + " _image_url" + _image_url, 
-                        error
-                   }, cacheKey, 500)
-                }
-
-            
-       
-  
-            
+          }, cacheKey, 200);
         }
 
-
-
-
-
-
-
-        
-    }
-
-const updatePricingList= async(req, res) => {
-    logRequestDetails(req, "updatePricingList");
-
-    const {productId, costPerItem,sellingPrice,productCommission, 
-            productProfit, productQuantity, productSize} = req.body;
-
-
-
-    try {
-
-
-
-        if(!productId){
-            console.log("productId Provided=> " + productId)
-         return logResponseDetails(req, res, {
-      status: 404,
-     
-                success:false,
-                message:"** Invalid IR Or provide id ** "
-                + " productId[" + productId + "]"
-                + " costPerItem[" + costPerItem + "]"
-                + " sellingPrice[" + sellingPrice + "]"
-                + " productCommission[" + productCommission + "]"
-                + " productProfit[" + productProfit + "]"
-                + " productQuantity[" + productQuantity + "]"
-                + " productSize[" + productSize + "]"
-                + " **************************************************"
-
-
-            })
-
-        }else{
-
-
-            console.log("id =>" +productId);
-            console.log("costPerItem => " + costPerItem);
-            console.log("sellingPrice  => " + sellingPrice);
-            console.log("productCommission => " + productCommission);
-            console.log("productProfit =>" +productProfit);
-            console.log("productQuantity => " + productQuantity);
-            console.log("productSize  => " + productSize);// Extract updated values from the request body 
-        
-            if(  
-                productId ==null || costPerItem==null || sellingPrice==null || productCommission==null ||  productProfit ==null ||  productQuantity==null ||  productSize==null 
-                || productId==undefined || costPerItem==undefined || sellingPrice==undefined || productCommission==undefined ||  productProfit ==undefined ||  productQuantity==undefined ||  productSize==undefined 
-    
-            ){
-                console.log("Values provided are not valid");
-    
-
-            try {
-                // Prepare SQL queries for both MySQL and PostgreSQL
-                const mysqlQuery = `UPDATE ${cacheKey} SET costPerItem = ?, sellingPrice = ?, productCommission = ?, productProfit = ?, productQuantity = ?, productSize = ? WHERE productId = ?`;
-                const pgQuery = `UPDATE ${cacheKey} SET costPerItem = $1, sellingPrice = $2, productCommission = $3, productProfit = $4, productQuantity = $5, productSize = $6 WHERE productId = $7`;
-                const replacements = [
-                    costPerItem,
-                    sellingPrice,
-                    productCommission,
-                    productProfit,
-                    productQuantity,
-                    productSize,
-                    productId
-                ];
-
-                const result = await updateCachedOrQuery(cacheKey, mysqlQuery, pgQuery, replacements);
-
-                console.log('✅ productPricing updated successfully:', result);
-
-                // Check if any rows were affected/updated
-                if (
-                    !result ||
-                    (typeof result.affectedRows === 'number' && result.affectedRows === 0) ||
-                    (typeof result.rowCount === 'number' && result.rowCount === 0)
-                ) {
-                    return logResponseDetails(req, res, {
-                        status: 404,
-                        success: false,
-                        message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
-                        result
-                   }, cacheKey, 500);
-                } else {
-                    return logResponseDetails(req, res, {
-                        status: 200,
-                        success: true,
-                        message: "✅ productPricing updated successfully",
-                        result
-                   }, cacheKey, 200);
-                }
-            } catch (error) {
-                console.error('❌ Error updating productPricing:', error);
-                return logResponseDetails(req, res, {
-                    status: 500,
-                    success: false,
-                    message: "Something went wrong while updating the record.",
-                    error
-               }, cacheKey, 500);
-            }
-            }
-        }
-        
-    } catch (error) {
-        
-                    
+      } catch (error) {
+        console.log(error);
+        // NOTE: this previously referenced _name/_flavor/_price/_image_url
+        // here, none of which exist anywhere in this function — that threw
+        // a ReferenceError and masked whatever the real update error was.
+        // Fixed to reference the actual fields this function deals with.
         return logResponseDetails(req, res, {
-      status: 500,
-     
-            success:false,
-            message:"Error in Update Student API", 
-            error
-       }, cacheKey, 500)
+          status: 500,
+          success: false,
+          message: `Something wrong happened while updating the record. productId=${productId} costPerItem=${costPerItem} sellingPrice=${sellingPrice} productCommission=${productCommission} productProfit=${productProfit} productQuantity=${productQuantity} productSize=${productSize} itemGrouping=${itemGrouping}`,
+          error
+        }, cacheKey, 500)
+      }
+
+
+
     }
+
+  } catch (error) {
+    return logResponseDetails(req, res, {
+      status: 500,
+      success: false,
+      message: "Error in Update Student API",
+      error
+    }, cacheKey, 500)
+  }
+
+}
+
+const updatePricingList = async (req, res) => {
+  logRequestDetails(req, "updatePricingList");
+
+  const { productId, costPerItem, sellingPrice, productCommission,
+    productProfit, productQuantity, productSize } = req.body;
+
+  try {
+
+    // NOTE: this validation used to be inverted. The original code had an
+    // outer `if (!productId) { return error }` followed by, inside its
+    // `else`, a SECOND check `if (productId == null || costPerItem == null
+    // || ...)` that only runs the actual UPDATE when that condition is
+    // TRUE — i.e. only when fields are missing. When every field was
+    // actually valid, that inner `if` was false, so nothing happened at
+    // all: no query ran and no response was ever sent, leaving the request
+    // to hang until timeout. When fields were missing, it ran the update
+    // anyway with null/undefined values. Replaced with a single check that
+    // validates first and only proceeds to update when the data is valid,
+    // matching every other endpoint in this file. Also filled in the
+    // cacheKey/status args this response was missing entirely.
+    if (
+      productId == null || costPerItem == null || sellingPrice == null || productCommission == null ||
+      productProfit == null || productQuantity == null || productSize == null
+    ) {
+      console.log("productId Provided=> " + productId)
+      return logResponseDetails(req, res, {
+        status: 404,
+        success: false,
+        message: "** Invalid IR Or provide id ** "
+          + " productId[" + productId + "]"
+          + " costPerItem[" + costPerItem + "]"
+          + " sellingPrice[" + sellingPrice + "]"
+          + " productCommission[" + productCommission + "]"
+          + " productProfit[" + productProfit + "]"
+          + " productQuantity[" + productQuantity + "]"
+          + " productSize[" + productSize + "]"
+          + " **************************************************"
+      }, cacheKey, 404)
+
+    } else {
+
+      console.log("id =>" + productId);
+      console.log("costPerItem => " + costPerItem);
+      console.log("sellingPrice  => " + sellingPrice);
+      console.log("productCommission => " + productCommission);
+      console.log("productProfit =>" + productProfit);
+      console.log("productQuantity => " + productQuantity);
+      console.log("productSize  => " + productSize);// Extract updated values from the request body
+
+      try {
+        // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+        // { text, values } specs, not the old 4-arg positional call
+        // (cacheKey, mysqlQuery, pgQuery, replacements). Quoted the
+        // camelCase pg columns too.
+        const mysqlQuery = {
+          text: `UPDATE ${cacheKey} SET costPerItem = ?, sellingPrice = ?, productCommission = ?, productProfit = ?, productQuantity = ?, productSize = ? WHERE productId = ?`,
+          values: [
+            costPerItem,
+            sellingPrice,
+            productCommission,
+            productProfit,
+            productQuantity,
+            productSize,
+            productId
+          ],
+        };
+        const pgQuery = {
+          text: `UPDATE ${cacheKey} SET "costPerItem" = $1, "sellingPrice" = $2, "productCommission" = $3, "productProfit" = $4, "productQuantity" = $5, "productSize" = $6 WHERE "productId" = $7`,
+          values: [
+            costPerItem,
+            sellingPrice,
+            productCommission,
+            productProfit,
+            productQuantity,
+            productSize,
+            productId
+          ],
+        };
+
+        const result = await updateCachedOrQuery(cacheKey, { pgQuery, mysqlQuery });
+
+        console.log('✅ productPricing updated successfully:', result);
+
+        // Check if any rows were affected/updated
+        if (
+          !result ||
+          (typeof result.affectedRows === 'number' && result.affectedRows === 0) ||
+          (typeof result.rowCount === 'number' && result.rowCount === 0)
+        ) {
+          // NOTE: body said status 404 but this used to pass 500 as the
+          // actual HTTP status — aligned with the body.
+          return logResponseDetails(req, res, {
+            status: 404,
+            success: false,
+            message: `❌ No rows updated in ${cacheKey}. Invalid productId or no change.`,
+            result
+          }, cacheKey, 404);
+        } else {
+          return logResponseDetails(req, res, {
+            status: 200,
+            success: true,
+            message: "✅ productPricing updated successfully",
+            result
+          }, cacheKey, 200);
+        }
+      } catch (error) {
+        console.error('❌ Error updating productPricing:', error);
+        return logResponseDetails(req, res, {
+          status: 500,
+          success: false,
+          message: "Something went wrong while updating the record.",
+          error
+        }, cacheKey, 500);
+      }
+    }
+
+  } catch (error) {
+
+    return logResponseDetails(req, res, {
+      status: 500,
+      success: false,
+      message: "Error in Update Student API",
+      error
+    }, cacheKey, 500)
+  }
 }
 
 
-export default {deletePricing,getPricingList, add2Pricing, getYummyList, updateProductPricing, updatePricingList}
+export default { deletePricing, getPricingList, add2Pricing, getYummyList, updateProductPricing, updatePricingList }

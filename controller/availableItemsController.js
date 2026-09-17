@@ -36,14 +36,18 @@ logRequestDetails(req, "removeAvailableItemsById");
         message: "PLease provide student Id => " + productId},cacheKey,400)
         }else{
 try {
-    const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-    const replacements = [productId];
-    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
+    // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+    // { text, values } specs, not positional (query, replacements) args.
+    // The pgQuery was also missing entirely before, so Postgres never
+    // received the delete.
+    const mysqlQuery = { text: `DELETE FROM ${cacheKey} WHERE productId = ?`, values: [productId] };
+    const pgQuery = { text: `DELETE FROM ${cacheKey} WHERE "productId" = $1`, values: [productId] };
+    const result = await removeCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
         result.info = cacheKey;
-    logResponseDetails(req,res,result, cacheKey,200);
+    return logResponseDetails(req,res,result, cacheKey,200);
 } catch (error) {
     console.error(error);
-        logResponseDetails(req,res,error, cacheKey,500);
+        return logResponseDetails(req,res,error, cacheKey,500);
 }
   
         
@@ -65,12 +69,14 @@ try {
 const getAvailableItems = async (req, res) => {
     logRequestDetails(req, "getAvailableItems");
   console.log(`${cacheKey} backend started...`);
-  const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
-  const _pgQuery = `SELECT * FROM ${cacheKey}`;
-  console.log("Now Quering : Key[" + cacheKey + "] mysl:" + _mysqlQuery + "pgSql:" + _pgQuery);
+  // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+  // { text, values } specs, not positional (mysqlQuery, pgQuery) args.
+  const mysqlQuery = { text: `SELECT * FROM ${cacheKey}` };
+  const pgQuery = { text: `SELECT * FROM ${cacheKey}` };
+  console.log("Now Quering : Key[" + cacheKey + "] mysl:" + mysqlQuery.text + "pgSql:" + pgQuery.text);
   try {
-    const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
-    logResponseDetails(req,res,data,cacheKey,200)
+    const data = await getCachedOrQuery(cacheKey, { pgQuery, mysqlQuery });
+    return logResponseDetails(req,res,data,cacheKey,200)
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
     return logResponseDetails(req, res,`Error in ${cacheKey}`,cacheKey,500)
@@ -91,10 +97,13 @@ const deleteAvailableItems = async(req, res) =>{
         }else{
             try {
 				
-                const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
-                const pgQuery = `DELETE FROM ${cacheKey} WHERE productId= $1`;
-                const replacements = [productId];
-                await removeCachedAndQuery(cacheKey, mysqlQuery, pgQuery, replacements);
+                // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+                // { text, values } specs, not positional args. Also the pgQuery's
+                // "productId" column was unquoted, which Postgres folds to
+                // lowercase (productid) and would never match the real column.
+                const mysqlQuery = { text: `DELETE FROM ${cacheKey} WHERE productId = ?`, values: [productId] };
+                const pgQuery = { text: `DELETE FROM ${cacheKey} WHERE "productId" = $1`, values: [productId] };
+                await removeCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
                 return logResponseDetails(req, res,  {
                     status: 200,
                     success:true,
@@ -139,11 +148,20 @@ const updateAvailableItems = async(req, res) => {
             // Sanitize / normalize the date value for MySQL
             const normalizedDate = formatForMySQL(lastUpdated);
 
-            const query = `UPDATE availableItems SET itemsRemaining = ?, lastUpdated = ? WHERE productId = ?`;
-            const replacements = [itemsRemaining, normalizedDate, productId];
+            // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+            // { text, values } specs, not positional (query, replacements) args.
+            // pgQuery was missing entirely before, so Postgres was never updated.
+            const mysqlQuery = {
+                text: `UPDATE availableItems SET itemsRemaining = ?, lastUpdated = ? WHERE productId = ?`,
+                values: [itemsRemaining, normalizedDate, productId],
+            };
+            const pgQuery = {
+                text: `UPDATE availableItems SET "itemsRemaining" = $1, "lastUpdated" = $2 WHERE "productId" = $3`,
+                values: [itemsRemaining, normalizedDate, productId],
+            };
             let result;
             try {
-                result = await updateCachedOrQuery(cacheKey, query, replacements);
+                result = await updateCachedOrQuery(cacheKey, { pgQuery, mysqlQuery });
                 console.log('✅ productItemPricing updated successfully:', result);
             } catch (error) {
                 console.error('❌ Error updating productItemPricing:', error);
@@ -201,18 +219,31 @@ const addAvailableItems = async(req, res) => {
             // Sanitize / normalize the datetime input string to avoid MySQL 'Incorrect datetime value' error
             const normalizedDate = formatForMySQL(lastUpdated);
 
-            // SQL INSERT statement
-            const query = `
-                INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
-                VALUES (?, ?, ?)
-                ON DUPLICATE KEY UPDATE 
-                    itemsRemaining = VALUES(itemsRemaining),
-                    lastUpdated = VALUES(lastUpdated)
-            `;   
-            
-            // Parameterized query with normalized replacements
-            const replacements = [productId, itemsRemaining, normalizedDate];
-            await addCachedAndQuery(cacheKey, query, replacements);
+            // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
+            // { text, values } specs, not positional (query, replacements) args.
+            // pgQuery was missing entirely before, so Postgres never received the insert/upsert.
+            const mysqlQuery = {
+                text: `
+                    INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
+                    VALUES (?, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        itemsRemaining = VALUES(itemsRemaining),
+                        lastUpdated = VALUES(lastUpdated)
+                `,
+                values: [productId, itemsRemaining, normalizedDate],
+            };
+            const pgQuery = {
+                text: `
+                    INSERT INTO availableItems ("productId", "itemsRemaining", "lastUpdated")
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT ("productId") DO UPDATE SET
+                        "itemsRemaining" = EXCLUDED."itemsRemaining",
+                        "lastUpdated" = EXCLUDED."lastUpdated"
+                `,
+                values: [productId, itemsRemaining, normalizedDate],
+            };
+
+            await addCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
 
             return logResponseDetails(req, res, {
                 status: 200,

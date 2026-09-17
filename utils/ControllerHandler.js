@@ -3,8 +3,45 @@
 // Tiered data access: Redis (cache) -> Postgres (primary) -> MySQL (legacy fallback).
 // Reads check Redis first, then Postgres, then MySQL, and backfill the cache
 // with whichever tier answered. Writes go to Postgres first, fall back to
-// MySQL on Postgres failure, and always refresh/invalidate the cache key
-// afterward rather than blind-writing the raw driver result into it.
+// MySQL on Postgres failure, and INVALIDATE the cache key afterward (rather
+// than just refreshing its TTL) so the next read is forced to go back to the
+// database and pick up the new value.
+//
+// -----------------------------------------------------------------------
+// 🔧 CHANGES FROM PREVIOUS VERSION (data-sync fix)
+// -----------------------------------------------------------------------
+// 1. safeRefreshKey(key) after INSERT/UPDATE/DELETE has been replaced with
+//    cacheDelete(key) ("invalidate-on-write"). `refreshKey` only extends the
+//    TTL of whatever value is *already* sitting in Redis — it does not
+//    overwrite it. If a prior read had cached an empty/stale result (e.g.
+//    `[]` because the row didn't exist yet), refreshKey was just re-arming
+//    that stale `[]` for another full TTL_SECONDS (~83 hours) every time a
+//    write happened, so reads never saw the new data. Deleting the key
+//    forces the next read to miss, hit Postgres/MySQL, and repopulate the
+//    cache with the current value.
+//
+// 2. Writes now ALSO invalidate the key BEFORE attempting the write, not
+//    just after. This shrinks (does not eliminate — see note below) the
+//    classic cache-aside race: read A misses -> read A queries DB (old
+//    value) -> write B commits + invalidates -> read A finishes and writes
+//    the old value back into the cache -> cache is stale until the next
+//    write. Invalidating both before and after a write ("double delete")
+//    reduces the odds of that interleaving landing badly. It is not a full
+//    guarantee — for strict correctness you'd want a per-key version stamp
+//    or a short lock — but for this workload it's a large improvement over
+//    a single post-write TTL refresh.
+//
+// 3. Negative/empty results (`[]`) are now cached with a much shorter TTL
+//    (NEGATIVE_CACHE_TTL_SECONDS) than real rows. That way even if an
+//    invalidation is ever missed for some reason, a false "not found" self
+//    corrects quickly instead of sticking around for ~83 hours.
+//
+// 4. Removed `return res.status(500).json(...)` from catch blocks around
+//    "get MySQL connection" failures. `res` was never passed into this
+//    module (it's a data layer, not a request handler), so that line threw
+//    `ReferenceError: res is not defined` and masked the real DB error.
+//    These now just rethrow so the caller (the actual route handler, which
+//    does have `res`) can decide how to respond.
 //
 // ASSUMPTION: when you add a Postgres client module at ../config/pgClient.js
 // exporting `getPgConnection()`, it should return a pooled client shaped like
@@ -22,8 +59,14 @@ import redisClient from '../config/redisClient.js';
 
 const { connectRedis, cacheSet, cacheGet, cacheDelete, cacheExists, refreshKey } = redisClient;
 
-// 📌 TTL for cache entries (seconds)
-const TTL_SECONDS = 30000 * 10;
+// 📌 TTL for cache entries (seconds) — real, non-empty results
+const TTL_SECONDS = 30000 * 10; // ~83 hours
+
+// 📌 TTL for cached "not found" / empty results (seconds).
+// Kept short on purpose: this is a safety net in case an invalidation is
+// ever missed, NOT the primary sync mechanism (that's invalidate-on-write
+// below). Tune to taste.
+const NEGATIVE_CACHE_TTL_SECONDS = 30;
 
 // ---------------------------------------------------------------------------
 // 🔧 Small helpers
@@ -50,18 +93,25 @@ const getPgConnection = async () => {
   return pgModule.getPgConnection();
 };
 
-// Safely pull a usable value out of whatever cacheGet(key) returns.
-// Treats "not found" / errors as a cache miss rather than throwing, so the
-// read path can fall through to Postgres/MySQL uninterrupted.
+// NOTE: ../config/redisClient.js's cacheGet returns an apiResponse envelope
+// shaped { success, message, data } (NOT { value }). `success: false` means
+// either a genuine cache miss OR that the Redis call itself failed — either
+// way that's a miss from this caller's point of view. Only `data` (already
+// JSON.parsed by cacheGet) is the actual cached value. Getting this shape
+// wrong previously meant every lookup — hit or miss — returned a truthy
+// wrapper object and was treated as a hit, so reads never fell through to
+// Postgres/MySQL at all.
 const tryGetFromCache = async (key) => {
   try {
     const cached = await cacheGet(key);
-    if (!cached) return null;
+    if (!cached || !cached.success) return null; // miss, or the Redis call itself failed
 
-    // cacheGet may return { success, value } style, a raw value, or a JSON string
-    const raw = cached.value !== undefined ? cached.value : cached;
+    const raw = cached.data;
     if (raw === undefined || raw === null) return null;
 
+    // Defensive fallback only — cacheGet already JSON.parses, so `raw` should
+    // already be the real value, not a JSON string. Kept in case the
+    // underlying client implementation ever changes shape.
     if (typeof raw === 'string') {
       try {
         return JSON.parse(raw);
@@ -77,19 +127,62 @@ const tryGetFromCache = async (key) => {
   }
 };
 
+// Cache-set that automatically shortens the TTL for empty results, so a
+// false negative can't camp out in Redis for TTL_SECONDS.
+// cacheSet/cacheDelete also return { success, message, data } and do NOT
+// throw on Redis failures (they catch internally) — so a plain try/catch
+// here would never notice a failed write. Check `.success` explicitly.
 const safeCacheSet = async (key, value) => {
+  const isEmpty = Array.isArray(value) && value.length === 0;
+  const ttl = isEmpty ? NEGATIVE_CACHE_TTL_SECONDS : TTL_SECONDS;
   try {
-    await cacheSet(key, value, TTL_SECONDS);
+    const result = await cacheSet(key, value, ttl);
+    if (!result?.success) {
+      console.warn(`${getLongTime()}⚠️ Cache write failed for key [${key}]:`, result?.message);
+    }
   } catch (err) {
     console.warn(`${getLongTime()}⚠️ Cache write failed for key [${key}]:`, err.message);
   }
 };
 
-const safeRefreshKey = async (key) => {
+// Invalidate (delete) a cache key. This is now the primary write-side sync
+// mechanism — see the "CHANGES" note at the top of this file for why this
+// replaced a plain TTL refresh.
+const safeInvalidateKey = async (key) => {
   try {
-    await refreshKey(key);
+    const result = await cacheDelete(key);
+    if (!result?.success) {
+      console.warn(`${getLongTime()}⚠️ Cache invalidation failed for key [${key}]:`, result?.message);
+    }
   } catch (err) {
-    console.warn(`${getLongTime()}⚠️ Cache refresh failed for key [${key}]:`, err.message);
+    console.warn(`${getLongTime()}⚠️ Cache invalidation failed for key [${key}]:`, err.message);
+  }
+};
+
+// Sync a row set found in MySQL back into Postgres, in the background.
+// `pgBackfillQuery` is caller-supplied because only the caller knows the
+// target table/columns/conflict key: either a static { text, values } spec,
+// or a function (rows) => { text, values } built from what MySQL returned.
+// Never throws — failures are logged and swallowed, since this always runs
+// after the response has already gone out to the client.
+const backfillPostgres = async (key, rows, pgBackfillQuery) => {
+  if (!pgBackfillQuery || !rows || rows.length === 0) return;
+
+  let pgConn;
+  try {
+    pgConn = await getPgConnection();
+    if (!pgConn) return; // Postgres tier not configured — nothing to backfill
+
+    const spec = typeof pgBackfillQuery === 'function' ? pgBackfillQuery(rows) : pgBackfillQuery;
+    if (!spec?.text) return;
+
+    console.log(`${getLongTime()}🔁 [Postgres] Backfilling ${rows.length} row(s) from MySQL for key [${key}]`);
+    await pgConn.query(spec.text, spec.values ?? []);
+    console.log(`${getLongTime()}✅ [Postgres] Backfill complete for key [${key}]`);
+  } catch (err) {
+    console.warn(`${getLongTime()}⚠️ [Postgres] Backfill failed for key [${key}]:`, err.message);
+  } finally {
+    pgConn?.release?.();
   }
 };
 
@@ -98,7 +191,17 @@ const safeRefreshKey = async (key) => {
 // ---------------------------------------------------------------------------
 // pgQuery / mysqlQuery are { text, values } shaped query specs. Either can be
 // omitted if that tier doesn't apply to a given call site (e.g. still MySQL-only).
-const getCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
+//
+// IMPORTANT (sync fix): an empty result from Postgres is NOT treated as a
+// final answer when a mysqlQuery was provided — it falls through to MySQL,
+// since Postgres may simply not have that row yet (not-yet-migrated legacy
+// data). Only when no mysqlQuery is given, or MySQL is also empty, do we
+// cache/return an empty result.
+//
+// When MySQL ends up answering, we respond to the caller immediately with
+// its rows and only AFTER that update Redis and (optionally) backfill
+// Postgres in the background, via `pgBackfillQuery` — see backfillPostgres().
+const getCachedOrQuery = async (key, { pgQuery, mysqlQuery, pgBackfillQuery } = {}) => {
   // 1️⃣ Redis
   const cached = await tryGetFromCache(key);
   if (cached !== null) {
@@ -108,6 +211,7 @@ const getCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
   console.log(`${getLongTime()}❌ Cache MISS for key [${key}]`);
 
   // 2️⃣ Postgres
+  let pgRows = null; // null = not consulted / errored, [] = consulted and empty
   if (pgQuery) {
     let pgConn;
     try {
@@ -116,17 +220,18 @@ const getCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
 
       console.log(`${getLongTime()}🔍 [Postgres] Executing SELECT for key [${key}]`);
       const { rows } = await pgConn.query(pgQuery.text, pgQuery.values ?? []);
+      pgRows = rows ?? [];
 
-      if (rows && rows.length > 0) {
-        console.log(`${getLongTime()}✅ [Postgres] SELECT success: ${rows.length} rows on key ${key}`);
-        await safeCacheSet(key, rows);
-        return rows;
+      if (pgRows.length > 0) {
+        console.log(`${getLongTime()}✅ [Postgres] SELECT success: ${pgRows.length} rows on key ${key}`);
+        await safeCacheSet(key, pgRows);
+        return pgRows;
       }
 
-      console.warn(`${getLongTime()}⚠️ [Postgres] Empty result for key: [${key}]`);
-      await safeCacheSet(key, []);
-      return [];
+      console.warn(`${getLongTime()}⚠️ [Postgres] Empty result for key: [${key}]${mysqlQuery ? ', checking MySQL before giving up' : ''}`);
+      // don't cache/return yet — fall through to MySQL below when available
     } catch (err) {
+      pgRows = null; // treat as "not consulted" so the no-mysqlQuery branch below rethrows correctly
       console.warn(`${getLongTime()}⚠️ [Postgres] SELECT failed for key [${key}], falling back to MySQL:`, err.message);
       // fall through to MySQL
     } finally {
@@ -134,53 +239,69 @@ const getCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     }
   }
 
-  // 3️⃣ MySQL (legacy fallback)
+  // 3️⃣ MySQL (legacy fallback / still-authoritative source for unmigrated rows)
   if (!mysqlQuery) {
+    if (pgQuery && pgRows !== null) {
+      // Postgres was consulted, came back empty, and there's nowhere else to check.
+      await safeCacheSet(key, pgRows);
+      return pgRows;
+    }
     throw new Error(`❌ No MySQL fallback query provided for key [${key}] and Postgres unavailable/omitted`);
   }
-  try{
 
-   const connection = await getConnection();
-      if (!connection) throw new Error('❌ MySQL connection failed');
-
+  let connection;
   try {
-    console.log(`${getLongTime()}🔍 [MySQL] Executing SELECT for key [${key}]`);
-    const [rows] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values);
+    connection = await getConnection();
+    if (!connection) throw new Error('❌ MySQL connection failed');
 
-    if (!rows || rows.length === 0) {
-      console.warn(`${getLongTime()}⚠️ [MySQL] Empty result for key: [${key}]`);
-      await safeCacheSet(key, []);
-      return [];
+    try {
+      console.log(`${getLongTime()}🔍 [MySQL] Executing SELECT for key [${key}]`);
+      const [rows] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values);
+
+      if (!rows || rows.length === 0) {
+        console.warn(`${getLongTime()}⚠️ [MySQL] Empty result for key: [${key}]`);
+        await safeCacheSet(key, []);
+        return [];
+      }
+
+      console.log(`${getLongTime()}✅ [MySQL] SELECT success: ${rows.length} rows on key ${key}`);
+
+      // Respond immediately — do NOT make the caller wait on Redis/Postgres sync.
+      // Background: update Redis first, then backfill Postgres, in that order.
+      (async () => {
+        await safeCacheSet(key, rows);
+        await backfillPostgres(key, rows, pgBackfillQuery);
+      })().catch((err) => {
+        console.warn(`${getLongTime()}⚠️ Background Redis/Postgres sync failed for key [${key}]:`, err.message);
+      });
+
+      return rows;
+    } catch (err) {
+      console.error(`${getLongTime()}❌ [MySQL] SELECT failed on key ${key}:`, err.message);
+      throw new Error(`${getLongTime()}❌ SELECT failed on key ${key}: ${err.message}`);
+    } finally {
+      connection.release();
+      console.log(`${getLongTime()}🔚 [MySQL] Connection released for key: [${key}]`);
     }
-
-    console.log(`${getLongTime()}✅ [MySQL] SELECT success: ${rows.length} rows on key ${key}`);
-    await safeCacheSet(key, rows);
-    return rows;
   } catch (err) {
-    console.error(`${getLongTime()}❌ [MySQL] SELECT failed on key ${key}:`, err.message);
-    throw new Error(`${getLongTime()}❌ SELECT failed on key ${key}: ${err.message}`);
-  } finally {
-    connection.release();
-    console.log(`${getLongTime()}🔚 [MySQL] Connection released for key: [${key}]`);
+    console.error('🔥 Error getting MySQL connection:', err);
+    throw err;
   }
-
-
-  }catch(err){
-    console.error("🔥 Error getting MySQL connection:", err);
-    return res.status(500).json({ message: 'Error getting MySQL connection' });
-  }
-
-
 };
 
 // ---------------------------------------------------------------------------
-// 🔧 Reusable: INSERT — Postgres first, MySQL fallback, then cache refresh
+// 🔧 Reusable: INSERT — Postgres first, MySQL fallback, then cache invalidate
 // ---------------------------------------------------------------------------
 const addCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
   if (!key || (!pgQuery && !mysqlQuery)) {
     console.log(`Missing or invalid input(s):`, { key, pgQuery, mysqlQuery });
     throw new Error(`❌ Invalid input to addCachedAndQuery on key ${key}`);
   }
+
+  // Invalidate up front too ("double delete"): shrinks the window in which a
+  // concurrent in-flight read could re-populate the cache with pre-write data
+  // between this write committing and its post-write invalidation below.
+  await safeInvalidateKey(key);
 
   // 1️⃣ Try Postgres
   if (pgQuery) {
@@ -193,7 +314,7 @@ const addCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
       const result = await pgConn.query(pgQuery.text, pgQuery.values ?? []);
 
       console.log(`${getLongTime()}✅ [Postgres] INSERT successful on key ${key}`);
-      await safeRefreshKey(key);
+      await safeInvalidateKey(key);
       return result;
     } catch (err) {
       console.warn(`${getLongTime()}⚠️ [Postgres] INSERT failed for key [${key}], falling back to MySQL:`, err.message);
@@ -208,39 +329,37 @@ const addCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     throw new Error(`❌ No MySQL fallback query provided for key [${key}] and Postgres unavailable/omitted`);
   }
 
-  try{
-
-  const connection = await getConnection();
-      if (!connection) throw new Error('❌ MySQL connection failed');
-
+  let connection;
   try {
-    console.log(`${getLongTime()}📥 [MySQL] INSERTING key: [${key}]`, mysqlQuery);
-    const [result] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
+    connection = await getConnection();
+    if (!connection) throw new Error('❌ MySQL connection failed');
 
-    console.log(`${getLongTime()}✅ [MySQL] INSERT successful on key ${key}`);
-    await safeRefreshKey(key);
-    return result;
+    try {
+      console.log(`${getLongTime()}📥 [MySQL] INSERTING key: [${key}]`, mysqlQuery);
+      const [result] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
+
+      console.log(`${getLongTime()}✅ [MySQL] INSERT successful on key ${key}`);
+      await safeInvalidateKey(key);
+      return result;
+    } catch (err) {
+      console.error(`${getLongTime()}❌ [MySQL] INSERT failed for key [${key}]:`, err.message);
+      throw new Error(`${getLongTime()}❌ INSERT failed for key [${key}]: ${err.message}`);
+    } finally {
+      connection.release();
+      console.log(`${getLongTime()}🔚 [MySQL] Connection released after insert: [${key}]`);
+    }
   } catch (err) {
-    console.error(`${getLongTime()}❌ [MySQL] INSERT failed for key [${key}]:`, err.message);
-    throw new Error(`${getLongTime()}❌ INSERT failed for key [${key}]: ${err.message}`);
-  } finally {
-    connection.release();
-    console.log(`${getLongTime()}🔚 [MySQL] Connection released after insert: [${key}]`);
+    console.error('🔥 Error getting MySQL connection:', err);
+    throw err;
   }
-    
-  }catch(err){
-    console.error("🔥 Error getting MySQL connection:", err);
-    return res.status(500).json({ message: 'Error getting MySQL connection' });
-  }
-
-
-
 };
 
 // ---------------------------------------------------------------------------
-// 🔧 Reusable: UPDATE — Postgres first, MySQL fallback, then cache refresh
+// 🔧 Reusable: UPDATE — Postgres first, MySQL fallback, then cache invalidate
 // ---------------------------------------------------------------------------
 const updateCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
+  await safeInvalidateKey(key); // pre-write invalidate, see addCachedAndQuery note
+
   // 1️⃣ Try Postgres (transactional)
   if (pgQuery) {
     let pgConn;
@@ -260,7 +379,7 @@ const updateCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
       }
 
       await pgConn.query('COMMIT');
-      await safeRefreshKey(key);
+      await safeInvalidateKey(key);
       return result;
     } catch (err) {
       try { await pgConn?.query('ROLLBACK'); } catch {}
@@ -276,48 +395,46 @@ const updateCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     throw new Error(`❌ No MySQL fallback query provided for key [${key}] and Postgres unavailable/omitted`);
   }
 
-  try{
-
-    const connection = await getConnection();
-      if (!connection) throw new Error('❌ MySQL connection failed');
-
+  let connection;
   try {
-    console.log(`${getLongTime()}📥 [MySQL] Updating key: [${key}]`, mysqlQuery);
+    connection = await getConnection();
+    if (!connection) throw new Error('❌ MySQL connection failed');
 
-    await connection.beginTransaction();
-    const [result] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
+    try {
+      console.log(`${getLongTime()}📥 [MySQL] Updating key: [${key}]`, mysqlQuery);
 
-    if (result.affectedRows === 0) {
-      console.warn(`${getLongTime()}⚠️ [MySQL] No rows updated for key: [${key}]`);
-    } else {
-      console.log(`${getLongTime()}✅ [MySQL] Updated ${result.affectedRows} rows on key ${key}`);
+      await connection.beginTransaction();
+      const [result] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
+
+      if (result.affectedRows === 0) {
+        console.warn(`${getLongTime()}⚠️ [MySQL] No rows updated for key: [${key}]`);
+      } else {
+        console.log(`${getLongTime()}✅ [MySQL] Updated ${result.affectedRows} rows on key ${key}`);
+      }
+
+      await connection.commit();
+      await safeInvalidateKey(key);
+      return result;
+    } catch (err) {
+      await connection.rollback();
+      console.error(`${getLongTime()}❌ [MySQL] Update failed for key [${key}]:`, err.message);
+      throw new Error(`${getLongTime()}❌ Update failed for [${key}]: ${err.message}`);
+    } finally {
+      connection.release();
+      console.log(`${getLongTime()}🔚 [MySQL] Connection released after update: [${key}]`);
     }
-
-    await connection.commit();
-    await safeRefreshKey(key);
-    return result;
   } catch (err) {
-    await connection.rollback();
-    console.error(`${getLongTime()}❌ [MySQL] Update failed for key [${key}]:`, err.message);
-    throw new Error(`${getLongTime()}❌ Update failed for [${key}]: ${err.message}`);
-  } finally {
-    connection.release();
-    console.log(`${getLongTime()}🔚 [MySQL] Connection released after update: [${key}]`);
+    console.error('🔥 Error getting MySQL connection:', err);
+    throw err;
   }
-
-    
-  }catch(err){
-    console.error("🔥 Error getting MySQL connection:", err);
-    return res.status(500).json({ message: 'Error getting MySQL connection' });
-  }
-
-
 };
 
 // ---------------------------------------------------------------------------
 // 🔧 Reusable: DELETE — Postgres first, MySQL fallback, then cache invalidate
 // ---------------------------------------------------------------------------
 const removeCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
+  await safeInvalidateKey(key); // pre-write invalidate, see addCachedAndQuery note
+
   // 1️⃣ Try Postgres
   if (pgQuery) {
     let pgConn;
@@ -329,8 +446,7 @@ const removeCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
       const result = await pgConn.query(pgQuery.text, pgQuery.values ?? []);
 
       console.log(`${getLongTime()}✅ [Postgres] Delete result on key ${key}:`, result.rowCount);
-      await cacheDelete(key);
-      await safeRefreshKey(key);
+      await safeInvalidateKey(key);
       return result;
     } catch (err) {
       console.warn(`${getLongTime()}⚠️ [Postgres] Delete failed for key [${key}], falling back to MySQL:`, err.message);
@@ -345,35 +461,31 @@ const removeCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     throw new Error(`❌ No MySQL fallback query provided for key [${key}] and Postgres unavailable/omitted`);
   }
 
-  try{
-
-    const connection = await getConnection();
-      if (!connection) throw new Error('❌ MySQL connection failed');
-
+  let connection;
   try {
-    console.log(`${getLongTime()}🗑️ [MySQL] Deleting for key [${key}]`);
-    const [result] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
+    connection = await getConnection();
+    if (!connection) throw new Error('❌ MySQL connection failed');
 
-    await connection.commit();
-    console.log(`${getLongTime()}✅ [MySQL] Delete result on key ${key}:`, result);
-    await cacheDelete(key);
-    await safeRefreshKey(key);
-    return result;
+    try {
+      console.log(`${getLongTime()}🗑️ [MySQL] Deleting for key [${key}]`);
+      const [result] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
+
+      await connection.commit();
+      console.log(`${getLongTime()}✅ [MySQL] Delete result on key ${key}:`, result);
+      await safeInvalidateKey(key);
+      return result;
+    } catch (err) {
+      await connection.rollback();
+      console.error(`${getLongTime()}❌ [MySQL] Delete failed for [${key}]:`, err.message);
+      throw new Error(`${getLongTime()}❌ Delete failed for [${key}]: ${err.message}`);
+    } finally {
+      connection.release();
+      console.log(`${getLongTime()}🔚 [MySQL] Connection released after delete: [${key}]`);
+    }
   } catch (err) {
-    await connection.rollback();
-    console.error(`${getLongTime()}❌ [MySQL] Delete failed for [${key}]:`, err.message);
-    throw new Error(`${getLongTime()}❌ Delete failed for [${key}]: ${err.message}`);
-  } finally {
-    connection.release();
-    console.log(`${getLongTime()}🔚 [MySQL] Connection released after delete: [${key}]`);
+    console.error('🔥 Error getting MySQL connection:', err);
+    throw err;
   }
-
-    
-  }catch(err){
-    console.error("🔥 Error getting MySQL connection:", err);
-    return res.status(500).json({ message: 'Error getting MySQL connection' });
-  }
-
 };
 
 const removeCachedAndQueryById = async (key, productId) => {
