@@ -3,7 +3,6 @@ import { publishToQueue, publishToQueueAndPrometheus, publishToQueue_Redis_Teleg
 import { matchEndpointLabel } from './endpointLogMap.js';
 import {buildTelegrafPayload} from "../data_transformer/telegraf_json.js"
 import TimeUtils from '../utils/Time.js';
-import { DATE } from 'sequelize';
 import {trackToken } from "../config/trackToken.js"
 
 

@@ -304,7 +304,6 @@ app.use('/uploads', express.static('uploads'));
 app.post('/upload-single', uploadImage);
 
 import updateRouter from "./routes/updateProductRoutemySql_Redis.js";
-import { Utils } from "sequelize";
 
 // POST /sortedAsRedisKey
 /*app.post('/sortedAsRedisKey', upload.single('file'), async (req, res) => {
