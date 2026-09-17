@@ -204,7 +204,7 @@ const addCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
 
   try {
     console.log(`${getLongTime()}📥 [MySQL] INSERTING key: [${key}]`, mysqlQuery);
-    const [result] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
+    const result = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
 
     console.log(`${getLongTime()}✅ [MySQL] INSERT successful on key ${key}`);
     await safeRefreshKey(key);
@@ -264,7 +264,7 @@ const updateCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     console.log(`${getLongTime()}📥 [MySQL] Updating key: [${key}]`, mysqlQuery);
 
     await connection.beginTransaction();
-    const [result] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
+    const result = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
 
     if (result.affectedRows === 0) {
       console.warn(`${getLongTime()}⚠️ [MySQL] No rows updated for key: [${key}]`);
@@ -321,7 +321,7 @@ const removeCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
 
   try {
     console.log(`${getLongTime()}🗑️ [MySQL] Deleting for key [${key}]`);
-    const [result] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
+    const result = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
 
     await connection.commit();
     console.log(`${getLongTime()}✅ [MySQL] Delete result on key ${key}:`, result);

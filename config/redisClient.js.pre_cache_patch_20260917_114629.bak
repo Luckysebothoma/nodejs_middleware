@@ -30,10 +30,13 @@ const apiResponse = (success, message, data) => ({ success, message, data });
 
 const cacheSet = async (key, value, ttlSeconds = 300) => {
 
-  const isConnected = await connectRedis();
-  if (!isConnected) {
-    console.error('❌ Redis connection error: could not (re)connect before cacheSet');
+  if(!connectRedis()){
+
+
+        console.error('❌ Redis connection error:', err.message);
+
   }
+    console.log('✅ Redis connected');
 
   try {
     await redisClient.setEx(key, ttlSeconds, JSON.stringify(value));

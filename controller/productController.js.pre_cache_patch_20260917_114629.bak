@@ -64,10 +64,7 @@ const getProductList = async (req, res) => {
 
   try {
 
-    const data = await getCachedOrQuery(cacheKey, {
-      mysqlQuery: { text: _mysqlQuery },
-      pgQuery: { text: _pgQuery },
-    });
+    const data = await getCachedOrQuery(cacheKey, _mysqlQuery, _pgQuery);
     
 //    return logResponseDetails(req, res, {
 //        status: 200,
@@ -225,9 +222,7 @@ const updateProduct = async (req, res) => {
   const replacements = [productName, productFlavor, productPrice, image_url, productId];
 
   try {
-    const result = await updateCachedOrQuery(cacheKey, {
-      mysqlQuery: { text: query, values: replacements },
-    });
+    const result = await updateCachedOrQuery(cacheKey, query, replacements);
 
     console.log(`✅ ${cacheKey} updated successfully:`, result);
 
@@ -334,9 +329,7 @@ try {
     const mysqlQuery = `DELETE FROM ${cacheKey} WHERE productId = ?`;
     const replacements = [productId];
 
-    const result = await removeCachedAndQuery(cacheKey, {
-        mysqlQuery: { text: mysqlQuery, values: replacements },
-    });
+    const result = await removeCachedAndQuery(cacheKey, mysqlQuery, replacements);
 
     if (result.affectedRows > 0) {
         return logResponseDetails(req,res,{
@@ -419,9 +412,7 @@ logRequestDetails(req, "addProduct");
 
         const connection = await getConnection();
         // Execute the query
-        const dbres = await addCachedAndQuery(cacheKey, {
-          mysqlQuery: { text: query, values: replacements },
-        });
+        const dbres = await addCachedAndQuery(cacheKey,  query , replacements, connection);
         
         return logResponseDetails(req, res, dbres, cacheKey, 200)
         }

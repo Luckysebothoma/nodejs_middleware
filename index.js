@@ -83,6 +83,7 @@ app.use(express.json());
 const allowedOrigins = [
   "https://192.168.0.140:9444",
   "https://192.168.0.140:4210",
+  "https://192.168.0.140:4200",
   "http://localhost:4200",
   "https://localhost:4200",
   "https://sweety-app.jstdo.uk",
