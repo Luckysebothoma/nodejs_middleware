@@ -8,14 +8,14 @@ uploads/
 .jpg
 # Node.js dependencies
 node_modules/
-.angular/
+*.angular/
 *.env*
 
 
 #certs
-.pem
-.crt
-.key
+*.pem
+*.crt
+*.key
 
 
 .prometheus_data
