@@ -6,7 +6,7 @@ let channel = null;
 let connection = null;
 let isConnected = false;
 
-const RABBITMQ_URL = 'amqp://admin:admin@rabbitmq:5672';
+const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 
 
 import redisClient from '../config/redisClient.js';
@@ -39,7 +39,7 @@ register.registerMetric(requestCounter);
 register.registerMetric(logSizeGauge);
 register.registerMetric(payloadLogMetric);
 
-const TELEGRAF_URL = 'http://telegraf-nodejs:8186/metrics'; // update as needed
+const TELEGRAF_URL = process.env.TELEGRAF_URL || 'http://localhost:8186/metrics'; // update as needed
 
 
 

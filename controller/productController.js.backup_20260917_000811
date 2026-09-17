@@ -91,7 +91,12 @@ const _getProductByID = async (productId) => {
 
     try {
         if (!productId) {
-            throw new Error("Invalid or missing product ID");
+
+            return logResponseDetails(req, res, {
+      status: 400,
+                success: false,
+                message: "Invalid or missing product ID"
+           }, cacheKey, 500);
         } else {
             const query = 'SELECT * FROM productList WHERE productId = :productId'
                 const replacements= [productId]

@@ -85,7 +85,7 @@ const allowedOrigins = [
   "https://192.168.0.140:4210",
   "http://localhost:4200",
   "https://localhost:4200",
-  "https://sweety-app.jstdo.uk",
+  "https://sweety.justdo-it.uk",
 ];
 
 

@@ -83,9 +83,7 @@ app.use(express.json());
 const allowedOrigins = [
   "https://192.168.0.140:9444",
   "https://192.168.0.140:4210",
-  "http://localhost:4200",
-  "https://localhost:4200",
-  "https://sweety-app.jstdo.uk",
+  
 ];
 
 
@@ -224,16 +222,13 @@ app.post('/update-product', async (req, res) => {
         image_url = VALUES(image_url)
     `;
 //    const [result] = await pool.execute(sql, params);
-      const oldValues = [oldData.productId, oldData.productName, oldData.productFlavor, oldData.productPrice, oldData.image_url];
-      const newValues = [newData.productId, newData.productName, newData.productFlavor, newData.productPrice, newData.image_url];
-
-      const [Redisresult] = await updateCachedOrQuery("product_backup:"+productListCacheKey, sql, oldValues);
-      const [mySqlresult] = await updateCachedOrQuery(productListCacheKey, sql, newValues);
+      const [Redisresult] = await updateCachedOrQuery("product_backup:"+productListCacheKey, sql, sql, oldData);
+      const [mySqlresult] = await updateCachedOrQuery(productListCacheKey, sql, sql, newData);
 
 
     return res.status(200).json({
       message: 'New data saved in MySQL, old data backed up in Redis',
-      mysqlResult: mySqlresult
+      mysqlResult: result
 
     });
 
@@ -253,17 +248,8 @@ console.log(getLongTime(new Date) +  getLongTime(new Date) +  "Headers:", req.he
 */
 // POST /images/temp - Upload image to Redis only
 
-// GET /images/temp-key - generate a temporary key the client can use to associate an upload
-app.get('/images/temp-key', async (req, res) => {
-  try {
-    const key = uuidv4();
-    await cacheSet(`temp:${key}`, { created: new Date().toISOString() }, 300);
-    return res.status(200).json({ key });
-  } catch (err) {
-    console.error('Error in /images/temp-key:', err);
-    return res.status(500).json({ error: 'Server error while generating temp key' });
-  }
-});
+//app.post('/images/temp-key', async (req, res) => {
+
 
 // Routes
 app.get("/", (req, res) => {
@@ -279,12 +265,16 @@ app.get("/", (req, res) => {
 app.get('/metrics', async (req, res) => {
   try {
     logRequestDetails(req, "metrics");
-    // NOTE: the prom-client registry is not wired up (see the commented-out
-    // import near the top of this file). Fail loudly instead of hanging.
-    return res.status(503).json({ error: 'Metrics endpoint not configured' });
+
+    res.set('Content-Type', register.contentType);
+    const metrics = await register.metrics();
+    //logResponseDetails(req, res, { status: 200, data: metrics });
+    //res.end(metrics);
+    logResponseDetails(req, res, metrics,"/metrics",200)
+ 
   } catch (err) {
-    console.error('Error in /metrics:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    //logResponseDetails(req, res, { status: 500, error: err.message });
+    //res.status(500).end(err.message);
   }
 });
 
@@ -300,7 +290,7 @@ const upload = multer({ dest: 'uploads/' }); // Will store file temporarily
 
 
 app.use('/uploads', express.static('uploads'));
-app.post('/upload-single', uploadImage);
+app.post('/upload', uploadImage);
 
 import updateRouter from "./routes/updateProductRoutemySql_Redis.js";
 import { Utils } from "sequelize";
@@ -529,44 +519,73 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
 app.get('/api/images/:key', async (req, res) => {
-  try {
-    const { key } = req.params;
-    const redisKey = `temp:${key}`;
-    const result = await cacheGet(redisKey);
 
-    if (!result.success || !result.data) return res.status(404).send('Image not found');
+ 
 
-    res.setHeader('Content-Type', 'image/png'); // or image/jpeg
-    res.send(Buffer.from(result.data, 'base64'));
-  } catch (err) {
-    console.error('Error in /api/images/:key:', err);
-    res.status(500).json({ error: 'Server error while retrieving image' });
-  }
+
+  const { key } = req.params;
+  const redisKey = `temp:${key}`;
+  //const imageData = await redisClient.getBuffer(redisKey); // Redis must store binary as buffer
+
+  if (!imageData) return res.status(404).send('Image not found');
+
+  res.setHeader('Content-Type', 'image/png'); // or image/jpeg
+  res.send(imageData);
 });
 
 
 app.get("/images/temp", async (req, res) => {
-  try {
-    const key = req.query.key;
-    if (!key) return logResponseDetails(req, res, { error: "Missing key" }, req.path, 400);
+ 
+  const key = req.query.key;
+  if (!key) logResponseDetails(req, res, { error: "Missing key" },req.path,400)
 
-    const result = await cacheGet(key);
-    if (!result.success || !result.data) return logResponseDetails(req, res, { error: "Not found" }, req.path, 404);
+  //const data = await get(key);
+  if (!data) logResponseDetails(req, res, { error: "Not found" },req.path,400)
 
-    const parsed = result.data;
-    res.set("Content-Type", parsed.mimetype);
-    res.send(Buffer.from(parsed.buffer, "base64"));
-  } catch (err) {
-    console.error("Error in /images/temp:", err);
-    return res.status(500).json({ error: "Server error while retrieving temp image" });
-  }
+
+  const parsed = JSON.parse(data);
+  res.set("Content-Type", parsed.mimetype);
+  res.send(Buffer.from(parsed.buffer, "base64"));
 });
 
 
-// NOTE: a duplicate, unreachable '/upload' handler used to live here. Express
-// only ever dispatches to the FIRST route registered for a given path, so this
-// handler (and its already-commented-out Redis logic) never ran. The active
-// multi-file '/upload' handler (field name 'images') lives earlier in this file.
+// Store uploaded files in temp directory
+const uploads = multer({ dest: 'uploads/' });
+
+
+// 👇 Must match the key used in FormData: 'files'
+app.post('/upload', upload.array('files'), async (req, res) => {
+ 
+  const files = req.files;
+
+  if (!files || files.length === 0) {
+
+        logResponseDetails(req, res, { error: 'No files uploaded' } ,req.path,400)
+
+  }
+
+  try {
+    const uploadedKeys = [];
+
+    for (const file of files) {
+      const buffer = fs.readFileSync(file.path);
+      const base64Data = buffer.toString('base64');
+
+      //const redisKey = `image:${Date.now()}:${file.originalname}`;
+      //await redis.set(redisKey, base64Data);
+      //await redis.zadd('uploadedFilesSorted', Date.now(), redisKey);
+
+      fs.unlinkSync(file.path);
+     // uploadedKeys.push(redisKey);
+    }
+    logResponseDetails(req, res, { message: 'Images uploaded', keys: uploadedKeys },req.path,200)
+
+   } catch (err) {
+   console.error(getLongTime(new Date) +  'Upload error:', err);
+       logResponseDetails(req, res, { error: 'Server error' },req.path,500)
+
+   }
+});
 
 // Reusable cluster worker logic
 function startWorkerProcesses(app, credentials) {

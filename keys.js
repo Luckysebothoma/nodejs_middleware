@@ -27,7 +27,6 @@ export const keys = {
   redisUser,
   redisHost,
   redisPort,
-  redisPassword,
 };
 
 export default keys;

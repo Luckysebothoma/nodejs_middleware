@@ -1,5 +1,5 @@
 networks:
-  api-network:
+  databases:
     external: true
 
 
@@ -15,21 +15,23 @@ services:
     env_file:
       - .env
     environment:
-      - PGUSER= ${POSTGRES_USER}
-      - PGHOST= ${POSTGRES_HOST}
-      - PGDATABASE= ${POSTGRES_DATABASE}
-      - PGPASSWORD= ${POSTGRES_PASSWORD}
-      - PGPORT= ${POSTGRES_PORT}
-      - MYSQL_ROOT_PASSWORD= ${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE= ${MYSQL_DATABASE}
-      - MYSQL_USER= ${MYSQL_USER}
-      - MYSQL_PASSWORD= ${MYSQL_PASSWORD}
-      - MYSQL_HOST= ${MYSQL_HOST}
-      - MYSQL_PORT= ${MYSQL_PORT}
+      # NOTE: this block used to re-declare PGUSER/PGHOST/MYSQL_*/etc as
+      # ${POSTGRES_USER}/${POSTGRES_HOST}/etc. docker-compose substitutes
+      # those ${...} tokens from variables literally named POSTGRES_*, which
+      # never existed in .env (the app and .env use PG*/MYSQL_* names), so
+      # every substitution resolved to an empty string. Explicit
+      # `environment:` entries always win over `env_file`, so this was
+      # silently blanking out every DB credential env_file had just loaded
+      # correctly from .env. env_file above already passes PGUSER, PGHOST,
+      # PGDATABASE, PGPASSWORD, PGPORT, MYSQL_HOST, MYSQL_PORT,
+      # MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD, MYSQL_ROOT_PASSWORD,
+      # REDIS_HOST, REDIS_PORT, REDIS_USER and REDIS_PASSWORD straight
+      # through with the exact names the app and keys.js expect, so no
+      # re-declaration is needed here.
       - TZ=Africa/Johannesburg
     ports:
-      - 8083:8443
-      - 8093:8080
+      - 8183:8443
+      - 8193:8080
     restart: unless-stopped
     networks:
-      - api-network
+      - databases
