@@ -9,7 +9,7 @@ uploads/
 # Node.js dependencies
 node_modules/
 *.angular/
-.env
+*.env
 
 
 #certs
