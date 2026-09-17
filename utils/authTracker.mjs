@@ -2,14 +2,18 @@ import crypto from "crypto";
 import pkg from "pg";
 const { Pool } = pkg;
 
+//add keys
+
+import { pgUser, pgHost, pgDatabase, pgPassword, pgPort } from "../keys.js";
+
 
 const pool = new Pool({
-  user: process.env.PG_USER || "postgres",
-  host: process.env.PG_HOST || "localhost",
-  database: process.env.PG_DB || "authdb",
-  password: process.env.PG_PASS || "password",
-  port: process.env.PG_PORT || 5432,
-});
+  user: pgUser,
+  host: pgHost,
+  database: pgDatabase,
+  password: pgPassword,
+  port: pgPort,
+}); 
 
 function hashToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");

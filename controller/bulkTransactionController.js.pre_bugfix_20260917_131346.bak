@@ -510,7 +510,7 @@ connection.commit(); // Lats Operation to commit to database
   if (!res.headersSent) {
    return logResponseDetails(req, res, {
       status: 500,
-     success: false, message: errorMessage },"addNewCandy",500);
+     success: false, message: errorMessage },cacheKey,500);
   }
 
 } finally {
@@ -522,7 +522,7 @@ connection.commit(); // Lats Operation to commit to database
         status: 200,
       success: true,
       message: `${getLongTime()}: Operation completed successfully`,
-    },"addNewCandy",200);
+    },cacheKey,500);
   }
 }
 
@@ -770,7 +770,7 @@ const replacements = [addProductListRequest.productId, addProductListRequest.pro
 try {
 
  
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
    return result;
   //const removedKey = removeData(key);
   //const returnedAddCach = getCachedOrQuery()
@@ -818,7 +818,7 @@ async function addYummyRecord(addProductPricingRequest, mySqlConnection) {
 
 try {
 
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
   return result;
   
 } catch (error) {
@@ -850,7 +850,7 @@ async function addAvailableItems(addAvailableItemsRequest, mySqlConnection) {
 
 try {
 
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
   return result;
   
 } catch (error) {
@@ -882,7 +882,7 @@ async function addPriceTrace(addPriceTracing, mySqlConnection) {
 
   try {
  
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
   return result;
   
 } catch (error) {
@@ -914,7 +914,7 @@ async function addEstimates(estimatesList, mySqlConnection) {
 
   try {
  
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
   return result;
   
 } catch (error) {
@@ -945,7 +945,7 @@ async function addSodEod(sodEodList, mySqlConnection) {
 
   try {
  
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
   return result;
   
 } catch (error) {
@@ -958,7 +958,6 @@ async function addSodEod(sodEodList, mySqlConnection) {
 }
 async function addProductItemPricing(productItemPricing, mySqlConnection){
 
-  const key = "productItemPricing";
   const query = `
             INSERT INTO productItemPricing (productId, productDescription, itemGroup, itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
@@ -968,7 +967,7 @@ async function addProductItemPricing(productItemPricing, mySqlConnection){
 
           try {
  
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
+  const result = addCachedAndQuery(key,query, replacements, mySqlConnection);
   return result;
   
 } catch (error) {
