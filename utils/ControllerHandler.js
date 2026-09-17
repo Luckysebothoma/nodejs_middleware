@@ -138,9 +138,10 @@ const getCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
   if (!mysqlQuery) {
     throw new Error(`❌ No MySQL fallback query provided for key [${key}] and Postgres unavailable/omitted`);
   }
+  try{
 
-  const connection = await getConnection();
-  if (!connection) throw new Error('❌ MySQL connection failed');
+   const connection = await getConnection();
+      if (!connection) throw new Error('❌ MySQL connection failed');
 
   try {
     console.log(`${getLongTime()}🔍 [MySQL] Executing SELECT for key [${key}]`);
@@ -162,6 +163,14 @@ const getCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     connection.release();
     console.log(`${getLongTime()}🔚 [MySQL] Connection released for key: [${key}]`);
   }
+
+
+  }catch(err){
+    console.error("🔥 Error getting MySQL connection:", err);
+    return res.status(500).json({ message: 'Error getting MySQL connection' });
+  }
+
+
 };
 
 // ---------------------------------------------------------------------------
@@ -199,8 +208,10 @@ const addCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     throw new Error(`❌ No MySQL fallback query provided for key [${key}] and Postgres unavailable/omitted`);
   }
 
+  try{
+
   const connection = await getConnection();
-  if (!connection) throw new Error('❌ MySQL connection failed');
+      if (!connection) throw new Error('❌ MySQL connection failed');
 
   try {
     console.log(`${getLongTime()}📥 [MySQL] INSERTING key: [${key}]`, mysqlQuery);
@@ -216,6 +227,14 @@ const addCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     connection.release();
     console.log(`${getLongTime()}🔚 [MySQL] Connection released after insert: [${key}]`);
   }
+    
+  }catch(err){
+    console.error("🔥 Error getting MySQL connection:", err);
+    return res.status(500).json({ message: 'Error getting MySQL connection' });
+  }
+
+
+
 };
 
 // ---------------------------------------------------------------------------
@@ -257,8 +276,10 @@ const updateCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     throw new Error(`❌ No MySQL fallback query provided for key [${key}] and Postgres unavailable/omitted`);
   }
 
-  const connection = await getConnection();
-  if (!connection) throw new Error('❌ MySQL connection failed');
+  try{
+
+    const connection = await getConnection();
+      if (!connection) throw new Error('❌ MySQL connection failed');
 
   try {
     console.log(`${getLongTime()}📥 [MySQL] Updating key: [${key}]`, mysqlQuery);
@@ -283,6 +304,14 @@ const updateCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     connection.release();
     console.log(`${getLongTime()}🔚 [MySQL] Connection released after update: [${key}]`);
   }
+
+    
+  }catch(err){
+    console.error("🔥 Error getting MySQL connection:", err);
+    return res.status(500).json({ message: 'Error getting MySQL connection' });
+  }
+
+
 };
 
 // ---------------------------------------------------------------------------
@@ -316,8 +345,10 @@ const removeCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     throw new Error(`❌ No MySQL fallback query provided for key [${key}] and Postgres unavailable/omitted`);
   }
 
-  const connection = await getConnection();
-  if (!connection) throw new Error('❌ MySQL connection failed');
+  try{
+
+    const connection = await getConnection();
+      if (!connection) throw new Error('❌ MySQL connection failed');
 
   try {
     console.log(`${getLongTime()}🗑️ [MySQL] Deleting for key [${key}]`);
@@ -336,6 +367,13 @@ const removeCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
     connection.release();
     console.log(`${getLongTime()}🔚 [MySQL] Connection released after delete: [${key}]`);
   }
+
+    
+  }catch(err){
+    console.error("🔥 Error getting MySQL connection:", err);
+    return res.status(500).json({ message: 'Error getting MySQL connection' });
+  }
+
 };
 
 const removeCachedAndQueryById = async (key, productId) => {

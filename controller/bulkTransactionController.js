@@ -325,7 +325,13 @@ const updateProducts_Batch = async (req, res) => {
   logRequestDetails(req, "updateProducts_Batch");
 
   const { productList, pricingList, availableItems, priceTracingList } = req.body;
-  const connection = await getConnection();
+  try{
+    const connection = await getConnection();
+  }catch(err){
+    console.error("🔥 Error getting MySQL connection:", err);
+    return res.status(500).json({ message: 'Error getting MySQL connection' });
+
+  }
 
 
   console.log("🟢 updateProducts_Batch called with body:\n", JSON.stringify(req.body, null, 2));
@@ -468,40 +474,42 @@ const addNewCandy = async(req, res) =>{
 
   const { addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing } = req.body;
     
-  const connection = await getConnection(); // Get a connection from the pool
+  try{
 
-// Process each part as needed
-res.json({ message: 'Data received successfully' });
 
- await connection.beginTransaction(); // Start the transaction
+    const connection = await getConnection(); // Get a connection from the pool
+        // Process each part as needed
+    res.json({ message: 'Data received successfully' });
 
-// Example of logging each part
-//console.log("" + ' \n Add Product Request:', addProductListRequest);
+    await connection.beginTransaction(); // Start the transaction
 
-//console.log("" + '\n Add Yummy Request:', addProductPricingRequest);
+    // Example of logging each part
+    //console.log("" + ' \n Add Product Request:', addProductListRequest);
 
-//console.log("" + '\n Add Available Items:', addAvailableItemsRequest);
+    //console.log("" + '\n Add Yummy Request:', addProductPricingRequest);
 
-//console.log("" + '\n Add Price Tracing:', addPriceTracing);
+    //console.log("" + '\n Add Available Items:', addAvailableItemsRequest);
 
-try {
-const productResult = await addProductRecord(addProductListRequest, connection);
-const yummyResult = await addYummyRecord(addProductPricingRequest, connection);
-const available_itemsResult = await addAvailableItems(addAvailableItemsRequest, connection)
-const price_tracing_Result = await addPriceTrace(addPriceTracing, connection);
+    //console.log("" + '\n Add Price Tracing:', addPriceTracing);
 
-/*
-// Example of logging each part
-console.log(productResult + ' \n Add Product Request:', addProductListRequest);
+    try {
+    const productResult = await addProductRecord(addProductListRequest, connection);
+    const yummyResult = await addYummyRecord(addProductPricingRequest, connection);
+    const available_itemsResult = await addAvailableItems(addAvailableItemsRequest, connection)
+    const price_tracing_Result = await addPriceTrace(addPriceTracing, connection);
 
-console.log(yummyResult + '\n Add Yummy Request:', addProductPricingRequest);
+    /*
+    // Example of logging each part
+    console.log(productResult + ' \n Add Product Request:', addProductListRequest);
 
-console.log(available_itemsResult + '\n Add Available Items:', addAvailableItemsRequest);
+    console.log(yummyResult + '\n Add Yummy Request:', addProductPricingRequest);
 
-console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
-*/
-connection.commit(); // Lats Operation to commit to database
-  
+    console.log(available_itemsResult + '\n Add Available Items:', addAvailableItemsRequest);
+
+    console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
+    */
+    connection.commit(); // Lats Operation to commit to database
+      
 
 } catch (error) {
   await connection.rollback(); // Always await rollback
@@ -529,6 +537,12 @@ connection.commit(); // Lats Operation to commit to database
     },"addNewCandy",200);
   }
 }
+
+  }catch(err){
+    console.error("🔥 Error getting MySQL connection:", err);
+    return res.status(500).json({ message: 'Error getting MySQL connection' });
+  }
+
 
 
 
@@ -1038,8 +1052,14 @@ const addListOfSodEod = async(req, res) =>{
           
 
   console.log(`pricingTracing: ${JSON.stringify(pricingTracing)} \n sodEOd: ${JSON.stringify(sodEOd)}, \n availableItems: ${JSON.stringify(availableItems)}, \n estimates: ${JSON.stringify(estimates)}`)
-  
-  const dbConnection = await getConnection()
+
+    try{
+    const dbConnection = await getConnection();
+  }catch(err){
+    console.error("🔥 Error getting MySQL connection:", err);
+    return res.status(500).json({ message: 'Error getting MySQL connection' });
+
+  }
   
   const sodEodResponse = await addSodEod(sodEOd, dbConnection)
   const availableItemsResponse = await addAvailableItems(availableItems,dbConnection);

@@ -46,13 +46,20 @@ const cacheKey = 'sodEodItems'; // Key to store the list in Redis
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-import client from "prom-client";
-import prometheusMetrics from "./utils/prometheusMetrics.js";
+/*
+import {
+  Registry,
+  collectDefaultMetrics,
+  Counter,
+  Histogram,
+  Gauge,
+  Pushgateway
+} from "prom-client";
 
-// Collect default Node.js process metrics (CPU, memory, event loop, etc.)
-// alongside the custom MySQL metrics defined in utils/prometheusMetrics.js.
-client.collectDefaultMetrics();
 
+ 
+
+*/
 import TimeUtils from "./utils/Time.js";
 
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
@@ -98,9 +105,9 @@ app.use(cors({
   credentials: true, // if you're using cookies or Auth headers
    optionsSuccessStatus: 200
 }));
-// Prometheus metrics: default + custom collectors are registered on
-// prom-client's default registry (client.register); see /metrics below
-// and utils/prometheusMetrics.js.
+// Prometheus metrics
+//const register = new Registry();
+//collectDefaultMetrics({ register });
 
 app.use((req, res, next) => {
   const startTime = Date.now();
@@ -221,16 +228,8 @@ app.post('/update-product', async (req, res) => {
       const oldValues = [oldData.productId, oldData.productName, oldData.productFlavor, oldData.productPrice, oldData.image_url];
       const newValues = [newData.productId, newData.productName, newData.productFlavor, newData.productPrice, newData.image_url];
 
-      const _metricsStart = Date.now();
-      let Redisresult, mySqlresult;
-      try {
-        [Redisresult] = await updateCachedOrQuery("product_backup:"+productListCacheKey, sql, oldValues);
-        [mySqlresult] = await updateCachedOrQuery(productListCacheKey, sql, newValues);
-        prometheusMetrics.logQuery('update-product', _metricsStart);
-      } catch (metricsErr) {
-        prometheusMetrics.logError('update-product');
-        throw metricsErr;
-      }
+      const [Redisresult] = await updateCachedOrQuery("product_backup:"+productListCacheKey, sql, oldValues);
+      const [mySqlresult] = await updateCachedOrQuery(productListCacheKey, sql, newValues);
 
 
     return res.status(200).json({
@@ -281,8 +280,9 @@ app.get("/", (req, res) => {
 app.get('/metrics', async (req, res) => {
   try {
     logRequestDetails(req, "metrics");
-    res.set('Content-Type', client.register.contentType);
-    return res.send(await client.register.metrics());
+    // NOTE: the prom-client registry is not wired up (see the commented-out
+    // import near the top of this file). Fail loudly instead of hanging.
+    return res.status(503).json({ error: 'Metrics endpoint not configured' });
   } catch (err) {
     console.error('Error in /metrics:', err);
     return res.status(500).json({ error: 'Internal server error' });
