@@ -10,10 +10,11 @@ import {
   pgPort
 } from '../keys.js';
 
+
 const poolConfig = {
   user: pgUser.trim(),
   host: pgHost.trim(),
-  database: "auth_token",
+  database: pgDatabase.trim(),
   password: pgPassword.trim(),
   port: parseInt(pgPort.trim(), 10),
   max: 10,

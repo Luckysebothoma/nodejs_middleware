@@ -1,4 +1,3 @@
-import { formatForMySQL } from '../utils/formatForMySQL.js';
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
@@ -369,7 +368,7 @@ const updateProducts_Batch = async (req, res) => {
 
     await connection.query(
         "INSERT INTO availableItems (productId, itemsRemaining, lastUpdated) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE itemsRemaining = VALUES(itemsRemaining), lastUpdated = VALUES(lastUpdated)",
-        [availableItems.productId, availableItems.itemsRemaining, formatForMySQL(availableItems.lastUpdated)]
+        [availableItems.productId, availableItems.itemsRemaining, availableItems.lastUpdated || new Date()]
       );
 
 
@@ -476,13 +475,13 @@ res.json({ message: 'Data received successfully' });
  await connection.beginTransaction(); // Start the transaction
 
 // Example of logging each part
-//console.log("" + ' \n Add Product Request:', addProductListRequest);
+console.log("" + ' \n Add Product Request:', addProductListRequest);
 
-//console.log("" + '\n Add Yummy Request:', addProductPricingRequest);
+console.log("" + '\n Add Yummy Request:', addProductPricingRequest);
 
-//console.log("" + '\n Add Available Items:', addAvailableItemsRequest);
+console.log("" + '\n Add Available Items:', addAvailableItemsRequest);
 
-//console.log("" + '\n Add Price Tracing:', addPriceTracing);
+console.log("" + '\n Add Price Tracing:', addPriceTracing);
 
 try {
 const productResult = await addProductRecord(addProductListRequest, connection);
@@ -490,7 +489,6 @@ const yummyResult = await addYummyRecord(addProductPricingRequest, connection);
 const available_itemsResult = await addAvailableItems(addAvailableItemsRequest, connection)
 const price_tracing_Result = await addPriceTrace(addPriceTracing, connection);
 
-/*
 // Example of logging each part
 console.log(productResult + ' \n Add Product Request:', addProductListRequest);
 
@@ -499,7 +497,7 @@ console.log(yummyResult + '\n Add Yummy Request:', addProductPricingRequest);
 console.log(available_itemsResult + '\n Add Available Items:', addAvailableItemsRequest);
 
 console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
-*/
+
 connection.commit(); // Lats Operation to commit to database
   
 
@@ -519,8 +517,6 @@ connection.commit(); // Lats Operation to commit to database
   connection.release();
 
   // ✅ Only send success if no headers have been sent (not in error)
-    console.log('✅ Transaction completed successfully. All records added. for productId:', addProductListRequest.productId);
-
   if (!res.headersSent) {
     return   logResponseDetails(req, res,  {
         status: 200,
@@ -849,7 +845,7 @@ async function addAvailableItems(addAvailableItemsRequest, mySqlConnection) {
   const replacements = [
     addAvailableItemsRequest.productId,
     addAvailableItemsRequest.itemsRemaining,
-    formatForMySQL(addAvailableItemsRequest.lastUpdated)
+    addAvailableItemsRequest.lastUpdated
   ];
 
 try {
@@ -881,7 +877,7 @@ async function addPriceTrace(addPriceTracing, mySqlConnection) {
   const replacements = [
     addPriceTracing.productId,
     addPriceTracing.accAmount,
-    formatForMySQL(addPriceTracing.lastUpdated)
+    addPriceTracing.lastUpdated
   ];
 
   try {
@@ -913,7 +909,7 @@ async function addEstimates(estimatesList, mySqlConnection) {
     estimatesList.productId,
     estimatesList.estimatedSelling,
     estimatesList.actualSelling,
-    formatForMySQL(estimatesList.lastUpdated), 
+    estimatesList.lastUpdated, 
   ];
 
   try {
@@ -944,7 +940,7 @@ async function addSodEod(sodEodList, mySqlConnection) {
     sodEodList.productName,
     sodEodList.itemsRemaining,
     sodEodList.itemsTaken,
-    formatForMySQL(sodEodList.lastUpdated),
+    sodEodList.lastUpdated,
    ];
 
   try {

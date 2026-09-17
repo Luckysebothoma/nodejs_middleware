@@ -116,8 +116,8 @@ logRequestDetails(req,cacheKey);
         */
 
 
-        const { productId, estimatedSelling,actualSelling,lastUpdated} = req.body;
-
+        const { productId, estimatedSelling,actualSelling,_lastUpdated} = req.body;
+        const lastUpdated = formatForMySQL(_lastUpdated);
         console.log("id =>" +productId);
         console.log("estimatedSelling => " + estimatedSelling);
         console.log("actualSelling  => " + actualSelling);
@@ -245,7 +245,8 @@ logRequestDetails(req, "deleteEstimates");
 // UPdating 
 const updateEstimates= async(req, res) => {
     logRequestDetails(req, "updateEstimates");
-    const { productId, estimatedSelling,actualSelling,lastUpdated} = req.body;
+    const { productId, estimatedSelling,actualSelling,_lastUpdated} = req.body;
+    const lastUpdated = formatForMySQL(_lastUpdated);
 
     console.log("id =>" +productId);
     console.log("estimatedSelling => " + estimatedSelling);

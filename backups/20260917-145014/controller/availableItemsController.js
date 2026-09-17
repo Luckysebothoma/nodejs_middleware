@@ -1,4 +1,3 @@
-import { formatForMySQL } from '../utils/formatForMySQL.js';
 const cacheKey = 'availableItems'; // Key to store the list in Redis
 let keyExist = false;
 import TimeUtils from '../utils/Time.js';
@@ -23,6 +22,19 @@ import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js
  */
 const MYSQL_DATETIME_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
+const formatForMySQL = (dateInput) => {
+    const toUTC = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
+
+    if (dateInput == null || dateInput === '') return toUTC(new Date());
+
+    // Already in MySQL shape — return untouched, never re-parse.
+    if (typeof dateInput === 'string' && MYSQL_DATETIME_RE.test(dateInput.trim())) {
+        return dateInput.trim();
+    }
+
+    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    return isNaN(date.getTime()) ? toUTC(new Date()) : toUTC(date);
+};
 
 const removeAvailableItemsById = async(req, res) =>{
 logRequestDetails(req, "removeAvailableItemsById");
@@ -124,10 +136,7 @@ const deleteAvailableItems = async(req, res) =>{
 const updateAvailableItems = async(req, res) => {
     logRequestDetails(req, "updateAvailableItems");
     try {
-        const { productId, itemsRemaining, _lastUpdated } = req.body;
-
-
-        const lastUpdated = formatForMySQL(_lastUpdated);
+        const { productId, itemsRemaining, lastUpdated } = req.body;
        
         if(productId == null || itemsRemaining == null || lastUpdated == null){
               return logResponseDetails(req, res, {
@@ -185,8 +194,7 @@ const updateAvailableItems = async(req, res) => {
 const addAvailableItems = async(req, res) => {
     logRequestDetails(req, "addAvailableItems");
     try {
-        const { productId, itemsRemaining, _lastUpdated } = req.body;
-        const lastUpdated = formatForMySQL(_lastUpdated);
+        const { productId, itemsRemaining, lastUpdated } = req.body;
         console.log("id => " + productId);
         console.log("itemsRemaining => " + itemsRemaining);
         console.log("lastUpdated => " + lastUpdated);

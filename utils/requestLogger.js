@@ -81,6 +81,7 @@ text/plain, ","accept-encoding":"gzip, br","accept-language":"en-US,en;q=0.5",
   };
 
   if (mode === 'short' || mode === 'both') {
+   /*
     console.log(`
       #######################################################################################3
       
@@ -92,7 +93,7 @@ text/plain, ","accept-encoding":"gzip, br","accept-language":"en-US,en;q=0.5",
 
       `);
 
- 
+ */
     //console.table(shortLog);
   }
 
@@ -161,7 +162,8 @@ text/plain, ","accept-encoding":"gzip, br","accept-language":"en-US,en;q=0.5",
 
 
    const message = "" || '';
-   console.log("payload to be sent", JSON.stringify(payload).length)
+   console.log("payload len to be sent", JSON.stringify(payload).length)
+
   const data = payload || [];
 
   const apiResponse ={
@@ -259,6 +261,7 @@ text/plain, ","accept-encoding":"gzip, br","accept-language":"en-US,en;q=0.5",
       //time: isoTimestamp,
       //hostname: req.hostname
     });
+    
   }
 
   if (mode === 'full' || mode === 'both') {

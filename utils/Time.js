@@ -1,8 +1,3 @@
-/**
- * Time formatting utility functions
- * Returns formatted time strings in different levels of detail
- */
-
 // timeUtils.js
 
 const defaultTimezone = 'Africa/Johannesburg';
@@ -72,117 +67,55 @@ function formattedDate(date = new Date()) {
   return `${time}-${dateStr}`;
 }
 
+/**
+ * Normalizes any input into a valid JavaScript Date object
+ */
+function toDate(value) {
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') return new Date(value);
+  if (typeof value === 'string') {
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? new Date() : date;
+  }
+  return new Date();
+}
+
+/**
+ * Formats any date input into MySQL/PostgreSQL compatible 'YYYY-MM-DD HH:MM:SS' 
+ * strictly adhering to the Africa/Johannesburg timezone.
+ */
+function toSqlFormat(dateInput = new Date()) {
+  const date = toDate(dateInput);
+
+  const options = {
+    timeZone: defaultTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  };
+
+  const formatter = new Intl.DateTimeFormat('en-US', options);
+  const parts = formatter.formatToParts(date);
+  const partMap = {};
+  
+  for (const part of parts) {
+    if (part.type !== 'literal') {
+      partMap[part.type] = part.value;
+    }
+  }
+
+  return `${partMap.year}-${partMap.month}-${partMap.day} ${partMap.hour}:${partMap.minute}:${partMap.second}`;
+}
+
 export default {
   getShortTime,
   getMidTime,
   getLongTime,
-  formattedDate
+  formattedDate,
+  toDate,
+  toSqlFormat
 };
-/*
-
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-// dateTimeService.js
-const { DateTimeFormat } = Intl;
-
-class DateTimeService {
-  constructor(timezone = 'Africa/Johannesburg') {
-    this.defaultTimezone = timezone;
-  }
-
-  toDate(value) {
-    if (value instanceof Date) return value;
-    if (typeof value === 'number') return new Date(value);
-    if (typeof value === 'string') {
-      const date = new Date(value);
-      return isNaN(date.getTime()) ? null : date;
-    }
-    return null;
-  }
-
-  normalizeDate(value) {
-    const date = this.toDate(value);
-    return date ? date : new Date();
-  }
-
-  formatDate(value, format = 'dd-mm-yyyy', timezone = this.defaultTimezone) {
-    const date = this.normalizeDate(value);
-
-    const formatter = new DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-
-    const parts = formatter.formatToParts(date);
-    const partMap = {};
-    for (const part of parts) {
-      if (part.type !== 'literal') {
-        partMap[part.type] = part.value;
-      }
-    }
-
-    const year = partMap.year;
-    const month = partMap.month;
-    const day = partMap.day;
-    const hour = partMap.hour;
-    const minute = partMap.minute;
-    const second = partMap.second;
-
-    switch (format) {
-      case 'dd-mm-yyyy':
-        return `${day}-${month}-${year}`;
-      case 'mysql':
-        return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
-      case 'full':
-        const fullDate = new DateTimeFormat('en-US', {
-          timeZone: timezone,
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        }).format(date);
-        return `${fullDate} ${hour}:${minute}:${second}`;
-      default:
-        return date.toISOString();
-    }
-  }
-
-  formatPartial(value, part = 'date', timezone = this.defaultTimezone) {
-    const date = this.normalizeDate(value);
-
-    const formatter = new DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    });
-
-    const parts = formatter.formatToParts(date);
-    const result = {};
-    for (const part of parts) {
-      if (part.type !== 'literal') result[part.type] = part.value;
-    }
-
-    if (part === 'date') {
-      return `${result.year}-${result.month}-${result.day}`;
-    }
-
-    return `${result.hour}:${result.minute}:${result.second}`;
-  }
-}
-
-module.exports = new DateTimeService();
-
-
-*/

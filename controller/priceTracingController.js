@@ -228,7 +228,8 @@ const addPriceTracing  = async(req, res) => {
         */
 
 
-        const { productId, accAmount ,lastUpdated} = req.body;
+        const { productId, accAmount ,_lastUpdated} = req.body;
+        const lastUpdated = formatForMySQL(_lastUpdated);
 
         console.log("id =>" +productId);
         console.log("accAmount => " + accAmount);
@@ -328,7 +329,8 @@ const updatePriceTracing = async(req, res) => {
     logRequestDetails(req, "updatePriceTracing")
     //        const { productId, accAmount ,lastUpdated} = req.body;
 
-    const { productId, accAmount ,lastUpdated} = req.body;
+    const { productId, accAmount ,_lastUpdated} = req.body;
+    const lastUpdated = formatForMySQL(_lastUpdated);
     console.log("++  updatePriceTracing ++ ");
     console.log("id =>" +productId);
     console.log("accAmount => " + accAmount);
