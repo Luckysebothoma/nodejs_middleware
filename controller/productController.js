@@ -1,6 +1,6 @@
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
-const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+const { formattedDate, getShortTime, getMidTime } = TimeUtils;
  import { getConnection } from '../config/db.js';
 
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';

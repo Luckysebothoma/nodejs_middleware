@@ -44,16 +44,16 @@
 //    does have `res`) can decide how to respond.
 //
 // ASSUMPTION: when you add a Postgres client module at ../config/pgClient.js
-// exporting `getPgConnection()`, it should return a pooled client shaped like
+// exporting `getConnection()`, it should return a pooled client shaped like
 // the standard `pg` Pool client: { query(text, params) => Promise<{ rows, rowCount }>, release() }.
 // If your actual module differs (different export name, different query
 // signature, etc.), update the dynamic import below to match. Until that
 // file exists, the Postgres tier is skipped automatically and every call
-// falls through to MySQL — see getPgConnection() below.
+// falls through to MySQL — see getConnection() below.
 
 import { getConnection } from '../config/db.js';
 import TimeUtils from './Time.js';
-const { getLongTime } = TimeUtils;
+const { getLongTime } = TimeUtils; 
 import { logRequestDetails, logResponseDetails } from './requestLogger.js';
 import redisClient from '../config/redisClient.js';
 
@@ -68,53 +68,7 @@ const TTL_SECONDS = 30000 * 10; // ~83 hours
 // below). Tune to taste.
 const NEGATIVE_CACHE_TTL_SECONDS = 30;
 
-// ---------------------------------------------------------------------------
-// 🔧 Small helpers
-// ---------------------------------------------------------------------------
 
-// Lazily/optionally load the Postgres client. Postgres isn't wired up in
-// every environment yet, and a static top-level import throws
-// ERR_MODULE_NOT_FOUND at boot (crashing the whole process) if
-// ../config/pgClient.js doesn't exist. Resolving it dynamically, on first
-// use, means: no pgClient.js yet -> Postgres tier is just skipped and every
-// call falls straight through to MySQL, instead of the app refusing to start.
-let _pgModulePromise;
-const getPgConnection = async () => {
-  if (_pgModulePromise === undefined) {
-    _pgModulePromise = import('../config/postgres.js').catch((err) => {
-      console.warn(`${getLongTime()}⚠️ Postgres client module not available, skipping Postgres tier:`, err.message);
-      return null;
-    });
-  }
-
-  const pgModule = await _pgModulePromise;
-  if (!pgModule) return null;
-
-  return pgModule.getPgConnection();
-};
-
-// Never throws — failures are logged and swallowed, since this always runs
-// after the response has already gone out to the client.
-const backfillPostgres = async (key, rows, pgBackfillQuery) => {
-  if (!pgBackfillQuery || !rows || rows.length === 0) return;
-
-  let pgConn;
-  try {
-    pgConn = await getPgConnection();
-    if (!pgConn) return; // Postgres tier not configured — nothing to backfill
-
-    const spec = typeof pgBackfillQuery === 'function' ? pgBackfillQuery(rows) : pgBackfillQuery;
-    if (!spec?.text) return;
-
-    console.log(`${getLongTime()}🔁 [Postgres] Backfilling ${rows.length} row(s) from MySQL for key [${key}]`);
-    await pgConn.query(spec.text, spec.values ?? []);
-    console.log(`${getLongTime()}✅ [Postgres] Backfill complete for key [${key}]`);
-  } catch (err) {
-    console.warn(`${getLongTime()}⚠️ [Postgres] Backfill failed for key [${key}]:`, err.message);
-  } finally {
-    pgConn?.release?.();
-  }
-};
 
 // ---------------------------------------------------------------------------
 // 🔧 Reusable: SELECT — Redis -> Postgres -> MySQL
@@ -145,7 +99,7 @@ const getCachedOrQuery = async (key, { pgQuery, mysqlQuery, pgBackfillQuery } = 
   if (pgQuery) {
     let pgConn;
     try {
-      pgConn = await getPgConnection();
+      pgConn = await getConnection();
       if (!pgConn) throw new Error('Postgres connection unavailable');
 
       console.log(`${getLongTime()}🔍 [Postgres] Executing SELECT for key [${key}]`);
@@ -208,7 +162,8 @@ const getCachedOrQuery = async (key, { pgQuery, mysqlQuery, pgBackfillQuery } = 
       return rows;
     } catch (err) {
       console.error(`${getLongTime()}❌ [MySQL] SELECT failed on key ${key}:`, err.message);
-      throw new Error(`${getLongTime()}❌ SELECT failed on key ${key}: ${err.message}`);
+      throw new Error(`❌ SELECT failed on key ${key}: ${err.message}`);
+
     } finally {
       connection.release();
       console.log(`${getLongTime()}🔚 [MySQL] Connection released for key: [${key}]`);
@@ -237,7 +192,7 @@ const addCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
   if (pgQuery) {
     let pgConn;
     try {
-      pgConn = await getPgConnection();
+      pgConn = await getConnection();
       if (!pgConn) throw new Error('Postgres connection unavailable');
 
       console.log(`${getLongTime()}📥 [Postgres] INSERTING key: [${key}]`, pgQuery);
@@ -294,7 +249,7 @@ const updateCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
   if (pgQuery) {
     let pgConn;
     try {
-      pgConn = await getPgConnection();
+      pgConn = await getConnection();
       if (!pgConn) throw new Error('Postgres connection unavailable');
 
       console.log(`${getLongTime()}📥 [Postgres] Updating key: [${key}]`, pgQuery);
@@ -369,7 +324,7 @@ const removeCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
   if (pgQuery) {
     let pgConn;
     try {
-      pgConn = await getPgConnection();
+      pgConn = await getConnection();
       if (!pgConn) throw new Error('Postgres connection unavailable');
 
       console.log(`${getLongTime()}🗑️ [Postgres] Deleting for key [${key}]`);

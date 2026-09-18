@@ -5,7 +5,7 @@ import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js
  import { getConnection } from '../config/db.js';
 
 
- const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+ const { formattedDate, getShortTime, getMidTime } = TimeUtils;
 
 const {
   getCachedOrQuery,

@@ -1,5 +1,8 @@
 import { createClient } from 'redis'; // Note: 'ioredis' has different API; if you use 'redis' npm, this is correct
 import { redisHost, redisPort } from "../keys.js";
+import TimeUtils from '../utils/Time.js';
+const { formattedDate, getShortTime, getMidTime } = TimeUtils;
+
 
 const redisClient = new createClient({
   socket: {

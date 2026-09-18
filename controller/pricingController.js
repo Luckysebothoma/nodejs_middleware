@@ -1,10 +1,11 @@
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
+const { formattedDate, getShortTime, getMidTime } = TimeUtils;
+
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
  import { getConnection } from '../config/db.js';
 
 
-const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
 const {
   getCachedOrQuery,
@@ -24,7 +25,7 @@ const getPricingList = async (req, res) => {
   // { text, values } specs, not positional (mysqlQuery, pgQuery) args.
   const mysqlQuery = { text: `SELECT * FROM ${cacheKey}` };
   const pgQuery = { text: `SELECT * FROM ${cacheKey}` };
-  console.log("Now Quering : Key[" + cacheKey + "] mysl:[" + mysqlQuery.text + "] pgSql:" + pgQuery.text + "]");
+  console.log("Now Quering : Key[" + cacheKey + "] mysql:[" + mysqlQuery.text + "] pgSql:" + pgQuery.text + "]");
 
   try {
 

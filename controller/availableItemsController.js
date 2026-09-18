@@ -5,7 +5,7 @@ import TimeUtils from '../utils/Time.js';
 import ControllerHandler from "../utils/ControllerHandler.js";
  
 import { getConnection } from '../config/db.js';
-const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+const { formattedDate, getShortTime, getMidTime } = TimeUtils;
 const {
   getCachedOrQuery,
   addCachedAndQuery,
