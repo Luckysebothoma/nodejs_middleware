@@ -57,7 +57,7 @@ const { getLongTime } = TimeUtils;
 import { logRequestDetails, logResponseDetails } from './requestLogger.js';
 import redisClient from '../config/redisClient.js';
 
-const { connectRedis, cacheSet, cacheGet, cacheDelete, cacheExists, refreshKey } = redisClient;
+const { connectRedis, cacheSet, cacheGet, cacheDelete, cacheExists, refreshKey, safeInvalidateKey, safeCacheSet, tryGetFromCache } = redisClient;
 
 // 📌 TTL for cache entries (seconds) — real, non-empty results
 const TTL_SECONDS = 30000 * 10; // ~83 hours
@@ -81,7 +81,7 @@ const NEGATIVE_CACHE_TTL_SECONDS = 30;
 let _pgModulePromise;
 const getPgConnection = async () => {
   if (_pgModulePromise === undefined) {
-    _pgModulePromise = import('../config/pgClient.js').catch((err) => {
+    _pgModulePromise = import('../config/postgres.js').catch((err) => {
       console.warn(`${getLongTime()}⚠️ Postgres client module not available, skipping Postgres tier:`, err.message);
       return null;
     });
@@ -93,76 +93,6 @@ const getPgConnection = async () => {
   return pgModule.getPgConnection();
 };
 
-// NOTE: ../config/redisClient.js's cacheGet returns an apiResponse envelope
-// shaped { success, message, data } (NOT { value }). `success: false` means
-// either a genuine cache miss OR that the Redis call itself failed — either
-// way that's a miss from this caller's point of view. Only `data` (already
-// JSON.parsed by cacheGet) is the actual cached value. Getting this shape
-// wrong previously meant every lookup — hit or miss — returned a truthy
-// wrapper object and was treated as a hit, so reads never fell through to
-// Postgres/MySQL at all.
-const tryGetFromCache = async (key) => {
-  try {
-    const cached = await cacheGet(key);
-    if (!cached || !cached.success) return null; // miss, or the Redis call itself failed
-
-    const raw = cached.data;
-    if (raw === undefined || raw === null) return null;
-
-    // Defensive fallback only — cacheGet already JSON.parses, so `raw` should
-    // already be the real value, not a JSON string. Kept in case the
-    // underlying client implementation ever changes shape.
-    if (typeof raw === 'string') {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return raw;
-      }
-    }
-
-    return raw;
-  } catch (err) {
-    console.warn(`${getLongTime()}⚠️ Cache read failed for key [${key}]:`, err.message);
-    return null;
-  }
-};
-
-// Cache-set that automatically shortens the TTL for empty results, so a
-// false negative can't camp out in Redis for TTL_SECONDS.
-// cacheSet/cacheDelete also return { success, message, data } and do NOT
-// throw on Redis failures (they catch internally) — so a plain try/catch
-// here would never notice a failed write. Check `.success` explicitly.
-const safeCacheSet = async (key, value) => {
-  const isEmpty = Array.isArray(value) && value.length === 0;
-  const ttl = isEmpty ? NEGATIVE_CACHE_TTL_SECONDS : TTL_SECONDS;
-  try {
-    const result = await cacheSet(key, value, ttl);
-    if (!result?.success) {
-      console.warn(`${getLongTime()}⚠️ Cache write failed for key [${key}]:`, result?.message);
-    }
-  } catch (err) {
-    console.warn(`${getLongTime()}⚠️ Cache write failed for key [${key}]:`, err.message);
-  }
-};
-
-// Invalidate (delete) a cache key. This is now the primary write-side sync
-// mechanism — see the "CHANGES" note at the top of this file for why this
-// replaced a plain TTL refresh.
-const safeInvalidateKey = async (key) => {
-  try {
-    const result = await cacheDelete(key);
-    if (!result?.success) {
-      console.warn(`${getLongTime()}⚠️ Cache invalidation failed for key [${key}]:`, result?.message);
-    }
-  } catch (err) {
-    console.warn(`${getLongTime()}⚠️ Cache invalidation failed for key [${key}]:`, err.message);
-  }
-};
-
-// Sync a row set found in MySQL back into Postgres, in the background.
-// `pgBackfillQuery` is caller-supplied because only the caller knows the
-// target table/columns/conflict key: either a static { text, values } spec,
-// or a function (rows) => { text, values } built from what MySQL returned.
 // Never throws — failures are logged and swallowed, since this always runs
 // after the response has already gone out to the client.
 const backfillPostgres = async (key, rows, pgBackfillQuery) => {
