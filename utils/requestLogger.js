@@ -13,30 +13,6 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
   const isoTimestamp = formattedDate(new Date())
    const currentTimeStamp = new Date().toISOString();;
   const dynamicLabel = matchEndpointLabel(req.method, req.path) || manualLabel || '🗂️ Unknown Endpoint';
-/*
-
-│ headers  │ '
-{"host":"node-js.justdo-it.uk",
-"user-agent":"Mozilla/5.0 (X11; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0",
-"accept":"application/json, 
-text/plain, ","accept-encoding":"gzip, br","accept-language":"en-US,en;q=0.5",
-"authorization":"Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InFiODZOdmpTQXNfcVNYTktZRURUQSJ9.eyJpc3MiOiJodHRwczovL2Rldi0zb2NobzQ2MHFhZ3FpcGRzLnVzLmF1dGgwLmNvbS8iLCJzdWIiOiJhdXRoMHw2NzQ2YWFjMzhiNjgwY2RmOTkwN2NjNjgiLCJhdWQiOlsiaHR0cHM6Ly9saW51eC5qdXN0ZG8taXQubG9jYWw6ODA4MyIsImh0dHBzOi8vZGV2LTNvY2hvNDYwcWFncWlwZHMudXMuYXV0aDAuY29tL3VzZXJpbmZvIl0sImlhdCI6MTc1NDU3NzMzNCwiZXhwIjoxNzU0NjYzNzM0LCJzY29wZSI6Im9wZW5pZCBwcm9maWxlIGVtYWlsIG9mZmxpbmVfYWNjZXNzIiwiYXpwIjoiNU5aWklDSVRhOUxDZzhVMGROUXJhVmhHcU5pRXBVVGkiLCJwZXJtaXNzaW9ucyI6WyJkZWxldGU6cHJvZHVjdHMiLCJyZWFkOnByb2R1Y3RzIiwid3JpdGU6cHJvZHVjdHMiXX0.OXn2CTknorGuTwEzUUKIPeIvrSpvDXK4PrQmZ5plELniGIqEFnBTS7y2pXT2bJR_Z6G_d-bIeBBgH2kI0cfeuY3M6NQxSzP5kmxD9AjBJ3JhtiEYik6PQx0Syh4btGrmh7q1KCvXf6woHlAsMAxxWP5zM66UnmgWWhAZ0Jree6pTOMBZxzQwmkKKCHEZ9WKLWbk-Rqc6_m9Ofg1fHI6cosVCaDXs3x8_l4ta2pfmXUBc8LDRArzBSDIRg58FfxOkAty6NhmtkDp6Soz9nmZe_7JmfKkELlk_iQCkhqujtiNaHq_lbPjiQFHJAMN3qtd0ooJX5ZC8lonQeub6KMDHMA",
-"cdn-loop":"cloudflare; loops=1",
-"cf-connecting-ip":"197.185.194.243",
-"cf-ipcountry":"ZA","cf-ray":"96bb7bb3ea2d0386-JNB",
-"cf-visitor":"{\\"scheme\\":\\"https\\"}",
-"cf-warp-tag-id":"898b2753-50f3-4329-8d36-b7d0dee95449",
-"connection":"keep-alive","if-none-match":"W/\\"1f39-QPmBWSTFVtExzOnFyjzlT7veo6k\\"",
-"origin":"https://192.168.0.140:4210",
-"referer":"https://192.168.0.140:4210/",
-"sec-fetch-dest":"empty",
-"sec-fetch-mode":"cors",
-"sec-fetch-site":"cross-site","x-correlation-id":"req-4pawkzr1k",
-"x-forwarded-for":"197.185.194.243",
-"x-forwarded-proto":"https",
-"x-user-id":"{\\"iss\\":\\"https://dev-3ocho460qagqipds.us.auth0.com/\\",\\"sub\\":\\"auth0|6746aac38b680cdf9907cc68\\",\\"aud\\":[\\"https://linux.justdo-it.local:8083\\",\\"https://dev-3ocho460qagqipds.us.auth0.com/userinfo\\"],\\"iat\\":1754577334,\\"exp\\":1754663734,\\"scope\\":\\"openid profile email offline_access\\",\\"azp\\":\\"5NZZICITa9LCg8U0dNQraVhGqNiEpUTi\\",\\"permissions\\":[\\"delete:products\\",\\"read:products\\",\\"write:products\\"]}"}
-
-*/
 
   const correlationId = req.headers['x-correlation-id'] || `req-${Date.now()}`;
   const userId = req.headers['x-user-id'] || 'anonymous';

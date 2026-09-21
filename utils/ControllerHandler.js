@@ -85,6 +85,63 @@ const NEGATIVE_CACHE_TTL_SECONDS = 30;
 // When MySQL ends up answering, we respond to the caller immediately with
 // its rows and only AFTER that update Redis and (optionally) backfill
 // Postgres in the background, via `pgBackfillQuery` — see backfillPostgres().
+
+
+
+
+// Keys currently being backfilled. Stops a burst of concurrent cache misses
+// on the same key from launching duplicate backfills.
+const backfillInFlight = new Set();
+
+// ---------------------------------------------------------------------------
+// 🔧 Background: copy MySQL rows into Postgres (best-effort, never throws)
+// ---------------------------------------------------------------------------
+// pgBackfillQuery is a function: (row) => ({ text, values }). It builds one
+// idempotent upsert per row, e.g. INSERT ... ON CONFLICT (...) DO NOTHING.
+// All rows go in one transaction, so a key is backfilled fully or not at all.
+const backfillPostgres = async (key, rows, pgBackfillQuery) => {
+  if (typeof pgBackfillQuery !== 'function') {
+    console.log(`${getLongTime()}⏭️ [Postgres] No backfill query for key [${key}], skipping`);
+    return { skipped: true };
+  }
+  if (!Array.isArray(rows) || rows.length === 0) return { written: 0 };
+
+  if (backfillInFlight.has(key)) {
+    console.log(`${getLongTime()}⏭️ [Postgres] Backfill already running for key [${key}], skipping`);
+    return { skipped: true };
+  }
+  backfillInFlight.add(key);
+
+  let pgConn;
+  try {
+    pgConn = await getConnection();
+    if (!pgConn) throw new Error('Postgres connection unavailable');
+
+    console.log(`${getLongTime()}🔄 [Postgres] Backfilling ${rows.length} rows for key [${key}]`);
+
+    await pgConn.query('BEGIN');
+    let written = 0;
+    for (const row of rows) {
+      const spec = pgBackfillQuery(row);
+      if (!spec?.text) continue;
+      const result = await pgConn.query(spec.text, spec.values ?? []);
+      written += result.rowCount ?? 0; // 0 when ON CONFLICT DO NOTHING skipped it
+    }
+    await pgConn.query('COMMIT');
+
+    console.log(`${getLongTime()}✅ [Postgres] Backfill done for key [${key}]: ${written}/${rows.length} rows written`);
+    return { written };
+  } catch (err) {
+    try { await pgConn?.query('ROLLBACK'); } catch {}
+    console.warn(`${getLongTime()}⚠️ [Postgres] Backfill failed for key [${key}]:`, err.message);
+    return { error: err.message };
+  } finally {
+    pgConn?.release?.();
+    backfillInFlight.delete(key);
+  }
+};
+
+
 const getCachedOrQuery = async (key, { pgQuery, mysqlQuery, pgBackfillQuery } = {}) => {
   // 1️⃣ Redis
   const cached = await tryGetFromCache(key);

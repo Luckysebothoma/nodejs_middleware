@@ -3,6 +3,8 @@ import { redisHost, redisPort } from "../keys.js";
 import TimeUtils from '../utils/Time.js';
 const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
+const TTL_SECONDS = 86400;  //24 hours
+
 const redisClient = new createClient({
   socket: {
   host: redisHost,
@@ -30,7 +32,7 @@ const connectRedis = async () => {
 
 const apiResponse = (success, message, data) => ({ success, message, data });
 
-const cacheSet = async (key, value, ttlSeconds = 300) => {
+const cacheSet = async (key, value, ttlSeconds = TTL_SECONDS) => {
 
   const isConnected = await connectRedis();
   if (!isConnected) {

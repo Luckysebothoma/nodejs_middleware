@@ -9,6 +9,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+#    command: bun --watch index.js
     volumes:
       - .:/app
       - ./edge_reasume_certs:/certs:ro

@@ -1,382 +1,271 @@
 import ControllerHandler from "../utils/ControllerHandler.js";
 import TimeUtils from '../utils/Time.js';
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
- import { getConnection } from '../config/db.js';
 
-const { formattedDate, getShortTime, getMidTime } = TimeUtils;
+const { formattedDate, toSqlFormatOrNull } = TimeUtils;
 
 const {
   getCachedOrQuery,
   addCachedAndQuery,
-  updateCachedOrQuery,
   removeCachedAndQuery
 } = ControllerHandler;
 
+// `stockedItems` = individual stocking events (stockId, stockDate, price, quantity)
+const cacheKey = 'stockedItems';
+// `stockItems` = current per-product stock (name, flavor, price, quantity)
+const stockItemsCacheKey = 'stockItems';
 
-const cacheKey = 'stockedItems'; // Key to store the list in Redis
+// ---------- helpers ----------
+
+const isMissing = (v) =>
+  v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+
+const isNumeric = (v) => !isMissing(v) && Number.isFinite(Number(v));
+
+const errorMessage = (e) => e?.message || String(e);
+
+// Builds the { status, success, ... } body and routes it through logResponseDetails.
+const respond = (req, res, key, status, body) =>
+  logResponseDetails(req, res, { status, success: status < 400, ...body }, key, status);
+
+const missingFields = (fields) =>
+  Object.keys(fields).filter((k) => isMissing(fields[k]));
+
+// ---------- handlers ----------
 
 const getStockList = async (req, res) => {
   logRequestDetails(req, "getStockList");
-  console.log(`${cacheKey} backend started...`);
 
-  const _mysqlQuery = `SELECT * FROM ${cacheKey}`;
-  const _pgQuery = `SELECT * FROM ${cacheKey}`;
-  console.log("Now Quering : Key[" + cacheKey + "] mysl:[" + _mysqlQuery + "] pgSql:" + _pgQuery + "]");
+  const text = `SELECT * FROM ${cacheKey}`;
+  console.log(`${formattedDate()} Querying [${cacheKey}]: ${text}`);
 
   try {
-    // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
-    // { text, values } specs, not positional (mysqlQuery, pgQuery) args.
     const data = await getCachedOrQuery(cacheKey, {
-      mysqlQuery: { text: _mysqlQuery },
-      pgQuery: { text: _pgQuery },
+      mysqlQuery: { text },
+      pgQuery: { text },
     });
 
-    // NOTE: this used to call res.status(200).send(data) directly,
-    // bypassing logResponseDetails entirely — this endpoint's requests
-    // never got logged, unlike every other endpoint in this codebase.
-    // Routed through logResponseDetails instead.
     return logResponseDetails(req, res, data, cacheKey, 200);
-
   } catch (error) {
     console.error(`getCachedOrQuery error for ${cacheKey}:`, error);
-    // NOTE: this also used to bypass logResponseDetails with a raw
-    // res.status(500).send(...) call. Routed through logResponseDetails.
-    return logResponseDetails(req, res, {
-      status: 500,
-      success: false,
+    return respond(req, res, cacheKey, 500, {
       message: `Error fetching ${cacheKey}`,
-      error: error.message || error,
-    }, cacheKey, 500);
+      error: errorMessage(error),
+    });
   }
-
-}
+};
 
 const deleteStock = async (req, res) => {
   logRequestDetails(req, "deleteStock");
-  try {
 
-    const productId = req.body.id;
-    // NOTE: this used to check `!lastUpdated` — `lastUpdated` is never
-    // declared anywhere in this function, so this threw a ReferenceError
-    // on every call instead of validating the actually-relevant
-    // `productId`. Fixed to check `productId`.
-    if (!productId) {
-      // NOTE: this used to call logResponseDetails with only 3 arguments
-      // (missing cacheKey and the status code), unlike every other
-      // endpoint in this file/codebase. Added both.
-      return logResponseDetails(req, res, {
-        status: 404,
-        success: false,
-        message: "PLease provide student Id => " + productId
-      }, cacheKey, 404)
-    } else {
+  // Accepts { id } or { productId } in the body, or :id in the URL.
+  const productId = req.body?.id ?? req.body?.productId ?? req.params?.id;
 
-      try {
-        // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
-        // { text, values } specs, not a positional (mysqlQuery,
-        // replacements) call — Postgres was never deleted from at all
-        // before. Added the matching pgQuery, quoted.
-        const mysqlQuery = { text: `DELETE FROM ${cacheKey} WHERE productId = ?`, values: [productId] };
-        const pgQuery = { text: `DELETE FROM ${cacheKey} WHERE "productId" = $1`, values: [productId] };
-
-        const result = await removeCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
-
-        return logResponseDetails(req, res, {
-          status: 200,
-          success: true,
-          message: `ID [${productId}] deleted successfully`,
-          result
-        }, cacheKey, 200)
-
-      } catch (error) {
-        // NOTE: missing cacheKey/status args here too — added.
-        return logResponseDetails(req, res, {
-          status: 500,
-          success: false,
-          message: "Error occurred while trying to delete.",
-          error,
-        }, cacheKey, 500)
-      }
-
-    }
-
-  } catch (error) {
-    console.log(error)
-    // NOTE: this used to bypass logResponseDetails with a raw
-    // res.status(500).send(...) call. Routed through logResponseDetails.
-    return logResponseDetails(req, res, {
-      status: 500,
-      success: false,
-      message: "Error in Deleting Student",
-      error
-    }, cacheKey, 500)
+  if (isMissing(productId)) {
+    return respond(req, res, stockItemsCacheKey, 400, {
+      message: "Please provide a product Id",
+    });
   }
 
-}
+  try {
+    // Deletes from stockItems (the table addStock writes to), where
+    // productId is the unique key.
+    const mysqlQuery = { text: `DELETE FROM ${stockItemsCacheKey} WHERE productId = ?`, values: [productId] };
+    const pgQuery = { text: `DELETE FROM ${stockItemsCacheKey} WHERE "productId" = $1`, values: [productId] };
 
-// NOTE: this inserted into a table literally named `stockItems`, while
-// every other function in this file reads/writes/caches under the
-// module-level cacheKey `'stockedItems'`. Caching this insert under
-// `stockedItems` would tie a completely different table's data to that
-// table's cache key. `stockItems` (current per-product stock: name,
-// flavor, price, quantity) and `stockedItems` (individual stocking events:
-// date, price, quantity) look like two distinct tables here, so this now
-// uses its own cache key that actually matches the table it writes to.
-// Worth double-checking against your schema that these are meant to be two
-// separate tables rather than one misnamed table.
-const stockItemsCacheKey = 'stockItems';
+    const result = await removeCachedAndQuery(stockItemsCacheKey, { pgQuery, mysqlQuery });
+
+    return respond(req, res, stockItemsCacheKey, 200, {
+      message: `ID [${productId}] deleted successfully`,
+      result,
+    });
+  } catch (error) {
+    console.error("deleteStock error:", error);
+    return respond(req, res, stockItemsCacheKey, 500, {
+      message: "Error occurred while trying to delete stock.",
+      error: errorMessage(error),
+    });
+  }
+};
 
 const addStock = async (req, res) => {
   logRequestDetails(req, "addStock");
+
   try {
-    const { productId, productName, productFlavor, productPrice, lastUpdated, productQuantity } = req.body;
+    const { productId, productName, productFlavor, productPrice, lastUpdated, productQuantity } = req.body ?? {};
 
-    console.log("id =>" + productId);
-    console.log("name => " + productName);
-    console.log("flavor  => " + productFlavor);
-    console.log("price => " + productPrice);
-    console.log("lastUpdated=> " + lastUpdated);
-    console.log("productQuantity => " + productQuantity);
-
-
-    if (
-      productId == null || productName == null || productFlavor == null || productPrice == null || lastUpdated == null || productQuantity == null
-      || productId == undefined || productName == undefined || productFlavor == undefined || productPrice == undefined || lastUpdated == undefined || productQuantity == undefined
-
-    ) {
-      // NOTE: this used to bypass logResponseDetails with a raw
-      // res.status(500).send(...) call. Routed through logResponseDetails.
-      return logResponseDetails(req, res, {
-        status: 400,
-        success: false,
-        message: "PLease Provide all fields"
-      }, stockItemsCacheKey, 400)
-
-    } else {
-
-      // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
-      // { text, values } specs, not a positional (query, replacements)
-      // call — Postgres was never written to at all before. Added the
-      // matching pgQuery, quoted.
-      const mysqlQuery = {
-        text: `
-          INSERT INTO stockItems (productId, productName, productFlavor, productPrice, lastUpdated, productQuantity)
-          VALUES (?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            productName = VALUES(productName),
-            productFlavor = VALUES(productFlavor),
-            productPrice = VALUES(productPrice),
-            lastUpdated = VALUES(lastUpdated),
-            productQuantity = VALUES(productQuantity)
-        `,
-        values: [productId, productName, productFlavor, productPrice, lastUpdated, productQuantity],
-      };
-
-      const pgQuery = {
-        text: `
-          INSERT INTO stockItems ("productId", "productName", "productFlavor", "productPrice", "lastUpdated", "productQuantity")
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT ("productId") DO UPDATE SET
-            "productName" = EXCLUDED."productName",
-            "productFlavor" = EXCLUDED."productFlavor",
-            "productPrice" = EXCLUDED."productPrice",
-            "lastUpdated" = EXCLUDED."lastUpdated",
-            "productQuantity" = EXCLUDED."productQuantity"
-        `,
-        values: [productId, productName, productFlavor, productPrice, lastUpdated, productQuantity],
-      };
-
-      // NOTE: this call used to be fired without `await`, its result was
-      // never checked, and no response was ever sent back to the client —
-      // the request would hang until it timed out. Both are fixed here.
-      const result = await addCachedAndQuery(stockItemsCacheKey, { pgQuery, mysqlQuery });
-
-      return logResponseDetails(req, res, {
-        status: 200,
-        success: true,
-        message: `[${productId}] added/updated successfully`,
-        result,
-      }, stockItemsCacheKey, 200)
-
+    const missing = missingFields({ productId, productName, productFlavor, productPrice, lastUpdated, productQuantity });
+    if (missing.length) {
+      return respond(req, res, stockItemsCacheKey, 400, {
+        message: "Please provide all fields",
+        response: `Missing: ${missing.join(", ")}`,
+      });
     }
 
+    if (!isNumeric(productPrice) || !isNumeric(productQuantity)) {
+      return respond(req, res, stockItemsCacheKey, 400, {
+        message: "productPrice and productQuantity must be numbers",
+      });
+    }
+
+    // Normalise to 'YYYY-MM-DD HH:MM:SS' (Africa/Johannesburg); reject junk.
+    const lastUpdatedSql = toSqlFormatOrNull(lastUpdated);
+    if (!lastUpdatedSql) {
+      return respond(req, res, stockItemsCacheKey, 400, {
+        message: `Invalid lastUpdated date: ${lastUpdated}`,
+      });
+    }
+
+    const values = [productId, productName, productFlavor, productPrice, lastUpdatedSql, productQuantity];
+
+    const mysqlQuery = {
+      text: `
+        INSERT INTO stockItems (productId, productName, productFlavor, productPrice, lastUpdated, productQuantity)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          productName = VALUES(productName),
+          productFlavor = VALUES(productFlavor),
+          productPrice = VALUES(productPrice),
+          lastUpdated = VALUES(lastUpdated),
+          productQuantity = VALUES(productQuantity)
+      `,
+      values,
+    };
+
+    const pgQuery = {
+      text: `
+        INSERT INTO stockItems ("productId", "productName", "productFlavor", "productPrice", "lastUpdated", "productQuantity")
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT ("productId") DO UPDATE SET
+          "productName" = EXCLUDED."productName",
+          "productFlavor" = EXCLUDED."productFlavor",
+          "productPrice" = EXCLUDED."productPrice",
+          "lastUpdated" = EXCLUDED."lastUpdated",
+          "productQuantity" = EXCLUDED."productQuantity"
+      `,
+      values,
+    };
+
+    const result = await addCachedAndQuery(stockItemsCacheKey, { pgQuery, mysqlQuery });
+
+    return respond(req, res, stockItemsCacheKey, 200, {
+      message: `[${productId}] added/updated successfully`,
+      result,
+    });
   } catch (error) {
-    console.log(error)
-    // NOTE: this used status 404 for a generic catch-all error, and
-    // bypassed logResponseDetails with a raw res.status(404).send(...)
-    // call. Changed to 500 (matching every other catch block in this
-    // codebase) and routed through logResponseDetails.
-    return logResponseDetails(req, res, {
-      status: 500,
-      success: false,
-      message: "Error in create Student API ",
-      error
-    }, stockItemsCacheKey, 500)
-
+    console.error("addStock error:", error);
+    return respond(req, res, stockItemsCacheKey, 500, {
+      message: "Error in addStock API",
+      error: errorMessage(error),
+    });
   }
-
-}
+};
 
 const addStockedItems = async (req, res) => {
   logRequestDetails(req, "addStockedItems");
-  const { productId, stockDate, stockId, stockPrice, stockQuantity } = req.body;
-
 
   try {
+    const { productId, stockDate, stockId, stockPrice, stockQuantity } = req.body ?? {};
 
-    console.log("id =>" + productId);
-    console.log("stockDate => " + stockDate);
-    console.log("stockId  => " + stockId);
-    console.log("stockPrice => " + stockPrice);
-    console.log("stockQuantity => " + stockQuantity);
-
-
-    if (
-      productId == null || stockDate == null || stockId == null || stockPrice == null || stockQuantity == null
-      || productId == undefined || stockDate == undefined || stockId == undefined || stockPrice == undefined || stockQuantity == undefined
-
-    ) {
-      // NOTE: this used to bypass logResponseDetails with a raw
-      // res.status(500).send(...) call. Routed through logResponseDetails.
-      return logResponseDetails(req, res, {
-        status: 400,
-        success: false,
-        message: "PLease Provide all fields",
-        response: "There are missing fields"
-      }, cacheKey, 400)
-
-    } else {
-
-      // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
-      // { text, values } specs, not a positional (query, replacements)
-      // call — Postgres was never written to at all before. Added the
-      // matching pgQuery, quoted.
-      const mysqlQuery = {
-        text: `
-          INSERT INTO stockedItems (productId, stockDate, stockId, stockPrice, stockQuantity)
-          VALUES (?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            stockDate = VALUES(stockDate),
-            stockId = VALUES(stockId),
-            stockPrice = VALUES(stockPrice),
-            stockQuantity = VALUES(stockQuantity)
-        `,
-        values: [productId, stockDate, stockId, stockPrice, stockQuantity],
-      };
-
-      const pgQuery = {
-        text: `
-          INSERT INTO stockedItems ("productId", "stockDate", "stockId", "stockPrice", "stockQuantity")
-          VALUES ($1, $2, $3, $4, $5)
-          ON CONFLICT ("stockId") DO UPDATE SET
-            "stockDate" = EXCLUDED."stockDate",
-            "productId" = EXCLUDED."productId",
-            "stockPrice" = EXCLUDED."stockPrice",
-            "stockQuantity" = EXCLUDED."stockQuantity"
-        `,
-        values: [productId, stockDate, stockId, stockPrice, stockQuantity],
-      };
-
-      const result = await addCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
-
-      // NOTE: this used to send a success response unconditionally,
-      // without checking whether the insert actually returned anything,
-      // and it bypassed logResponseDetails with a raw
-      // res.status(200).send(...) call. Added a basic result check and
-      // routed through logResponseDetails.
-      if (!result) {
-        return logResponseDetails(req, res, {
-          status: 500,
-          success: false,
-          message: "Error: could not add stocked item",
-        }, cacheKey, 500)
-      }
-
-      return logResponseDetails(req, res, {
-        status: 200,
-        success: true,
-        message: "Stocked Item Added Successfully",
-        result
-      }, cacheKey, 200)
-
+    const missing = missingFields({ productId, stockDate, stockId, stockPrice, stockQuantity });
+    if (missing.length) {
+      return respond(req, res, cacheKey, 400, {
+        message: "Please provide all fields",
+        response: `Missing: ${missing.join(", ")}`,
+      });
     }
 
+    if (!isNumeric(stockPrice) || !isNumeric(stockQuantity)) {
+      return respond(req, res, cacheKey, 400, {
+        message: "stockPrice and stockQuantity must be numbers",
+      });
+    }
+
+    const stockDateSql = toSqlFormatOrNull(stockDate);
+    if (!stockDateSql) {
+      return respond(req, res, cacheKey, 400, {
+        message: `Invalid stockDate: ${stockDate}`,
+      });
+    }
+
+    const values = [productId, stockDateSql, stockId, stockPrice, stockQuantity];
+
+    // Both dialects upsert on stockId and update the same set of columns.
+    const mysqlQuery = {
+      text: `
+        INSERT INTO stockedItems (productId, stockDate, stockId, stockPrice, stockQuantity)
+        VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          productId = VALUES(productId),
+          stockDate = VALUES(stockDate),
+          stockPrice = VALUES(stockPrice),
+          stockQuantity = VALUES(stockQuantity)
+      `,
+      values,
+    };
+
+    const pgQuery = {
+      text: `
+        INSERT INTO stockedItems ("productId", "stockDate", "stockId", "stockPrice", "stockQuantity")
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT ("stockId") DO UPDATE SET
+          "productId" = EXCLUDED."productId",
+          "stockDate" = EXCLUDED."stockDate",
+          "stockPrice" = EXCLUDED."stockPrice",
+          "stockQuantity" = EXCLUDED."stockQuantity"
+      `,
+      values,
+    };
+
+    const result = await addCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
+
+    if (!result) {
+      return respond(req, res, cacheKey, 500, {
+        message: "Error: could not add stocked item",
+      });
+    }
+
+    return respond(req, res, cacheKey, 200, {
+      message: "Stocked Item Added Successfully",
+      result,
+    });
   } catch (error) {
-    console.log(error)
-    // NOTE: this used status 404 for a generic catch-all error, and
-    // bypassed logResponseDetails with a raw res.status(404).send(...)
-    // call. Changed to 500 (matching every other catch block in this
-    // codebase) and routed through logResponseDetails.
-    return logResponseDetails(req, res, {
-      status: 500,
-      success: false,
-      message: "Error in create Student API ",
-      error
-    }, cacheKey, 500)
-
+    console.error("addStockedItems error:", error);
+    return respond(req, res, cacheKey, 500, {
+      message: "Error in addStockedItems API",
+      error: errorMessage(error),
+    });
   }
-
-}
+};
 
 const removeStockedItems = async (req, res) => {
   logRequestDetails(req, "removeStockedItems");
 
+  const productId = req.params.id;
+  console.log(`${formattedDate()} ID to delete from ${cacheKey}: ${productId}`);
 
-  const productId = req.params.id; // Extract student ID from the request URL
-
-  try {
-
-    console.log(formattedDate() + "ID Pricing to delte: " + productId);
-
-    if (!productId) {
-      // NOTE: this used to bypass logResponseDetails with a raw
-      // res.status(404).send(...) call. Routed through logResponseDetails.
-      return logResponseDetails(req, res, {
-        status: 404,
-        success: false,
-        message: "PLease provide student Id => " + productId
-      }, cacheKey, 404)
-    } else {
-
-      try {
-        // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
-        // { text, values } specs, not a positional (mysqlQuery,
-        // replacements) call — Postgres was never deleted from at all
-        // before. Added the matching pgQuery, quoted.
-        const mysqlQuery = { text: `DELETE FROM ${cacheKey} WHERE productId = ?`, values: [productId] };
-        const pgQuery = { text: `DELETE FROM ${cacheKey} WHERE "productId" = $1`, values: [productId] };
-
-        const result = await removeCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
-
-        return logResponseDetails(req, res, {
-          status: 200,
-          success: true,
-          message: `ID [${productId}] deleted successfully`,
-        }, cacheKey, 200);
-
-      } catch (error) {
-        return logResponseDetails(req, res, {
-          status: 500,
-          success: false,
-          message: "Error occurred while trying to delete.",
-          error,
-        }, cacheKey, 500);
-      }
-
-    }
-
-  } catch (error) {
-    // NOTE: this used to call logResponseDetails with only 3 arguments
-    // (missing cacheKey and the status code). Added both.
-    return logResponseDetails(req, res, {
-      status: 500,
-      success: false,
-      message: "Error in Deleting Student",
-      error
-    }, cacheKey, 500)
+  if (isMissing(productId)) {
+    return respond(req, res, cacheKey, 400, {
+      message: "Please provide a product Id",
+    });
   }
 
-}
+  try {
+    const mysqlQuery = { text: `DELETE FROM ${cacheKey} WHERE productId = ?`, values: [productId] };
+    const pgQuery = { text: `DELETE FROM ${cacheKey} WHERE "productId" = $1`, values: [productId] };
 
+    await removeCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
+
+    return respond(req, res, cacheKey, 200, {
+      message: `ID [${productId}] deleted successfully`,
+    });
+  } catch (error) {
+    console.error("removeStockedItems error:", error);
+    return respond(req, res, cacheKey, 500, {
+      message: "Error occurred while trying to delete.",
+      error: errorMessage(error),
+    });
+  }
+};
 
 export default { addStock, getStockList, deleteStock, addStockedItems, removeStockedItems };
