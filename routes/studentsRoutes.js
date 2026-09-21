@@ -97,7 +97,7 @@ router.delete('/removeProductItemPricing/:id',deleteProductItemPricing)
 
 // stock
 router.post('/addStock', addStock);
-router.post('/addStockedItems', addStockedItems);
+router.post('/addStockItems', addStockedItems);
 router.delete('/deleteStock/:id', deleteStock)
 router.delete('/removeStockedItems/:id', removeStockedItems)
 
