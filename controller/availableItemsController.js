@@ -5,6 +5,8 @@ import TimeUtils from '../utils/Time.js';
 import ControllerHandler from "../utils/ControllerHandler.js";
  
 import { getConnection } from '../config/db.js';
+
+
 const { formattedDate, getShortTime, getMidTime } = TimeUtils;
 const {
   getCachedOrQuery,
@@ -222,26 +224,28 @@ const addAvailableItems = async(req, res) => {
             // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
             // { text, values } specs, not positional (query, replacements) args.
             // pgQuery was missing entirely before, so Postgres never received the insert/upsert.
-            const mysqlQuery = {
-                text: `
-                    INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
-                    VALUES (?, ?, ?)
-                    ON DUPLICATE KEY UPDATE 
-                        itemsRemaining = VALUES(itemsRemaining),
-                        lastUpdated = VALUES(lastUpdated)
-                `,
-                values: [productId, itemsRemaining, normalizedDate],
-            };
-            const pgQuery = {
-                text: `
-                    INSERT INTO availableItems ("productId", "itemsRemaining", "lastUpdated")
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT ("productId") DO UPDATE SET
-                        "itemsRemaining" = EXCLUDED."itemsRemaining",
-                        "lastUpdated" = EXCLUDED."lastUpdated"
-                `,
-                values: [productId, itemsRemaining, normalizedDate],
-            };
+        const mysqlQuery = {
+            text: `
+                INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
+                VALUES (?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    itemsRemaining = itemsRemaining + VALUES(itemsRemaining),
+                    lastUpdated = VALUES(lastUpdated)
+            `,
+            values: [productId, itemsRemaining, normalizedDate],
+        };
+
+        const pgQuery = {
+            text: `
+                INSERT INTO availableItems ("productId", "itemsRemaining", "lastUpdated")
+                VALUES ($1, $2, $3)
+                ON CONFLICT ("productId") DO UPDATE SET
+                    "itemsRemaining" = availableItems."itemsRemaining" + EXCLUDED."itemsRemaining",
+                    "lastUpdated" = EXCLUDED."lastUpdated"
+            `,
+            values: [productId, itemsRemaining, normalizedDate],
+        };
+
 
             await addCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
 

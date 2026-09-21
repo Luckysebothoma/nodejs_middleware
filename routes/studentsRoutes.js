@@ -32,6 +32,7 @@ const { addNewCandy, addNewCandy_with_image, deleteItem, updateProducts_Batch , 
 import uploadImagesController from "../controller/uploadImages.js";
 const { uploadImages, uploadMiddleware } = uploadImagesController;
 
+import { addDailyOps } from "../controller/addDailyOps.js";
 
 
 
@@ -101,6 +102,8 @@ router.post('/addStockItems', addStockedItems);
 router.delete('/deleteStock/:id', deleteStock)
 router.delete('/removeStockedItems/:id', removeStockedItems)
 
+
+router.post('/addDailyOps', addDailyOps);
 
 // SOD_EOD - ddSodEodItems, deleteSodEodItems, getSodEodItems, updateSodEodItems}
 router.get('/getSodEodItems', getSodEodItems)

@@ -1,47 +1,64 @@
-import promClient from 'prom-client';
-import { publishToQueue, publishToQueueAndPrometheus, publishToQueue_Redis_Telegraf } from '../utils/rabbitMQPublisher.js';  // Assumes you are publishing to RabbitMQ
+import { publishToQueue_Redis_Telegraf } from '../utils/rabbitMQPublisher.js';
 import { matchEndpointLabel } from './endpointLogMap.js';
-import {buildTelegrafPayload} from "../data_transformer/telegraf_json.js"
+import { buildTelegrafPayload } from '../data_transformer/telegraf_json.js';
 import TimeUtils from '../utils/Time.js';
-import {trackToken } from "../config/trackToken.js"
 
+const { formattedDate, getLongTime } = TimeUtils;
 
+const UNKNOWN_LABEL = '🗂️ Unknown Endpoint';
 
-const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+const shouldPublish = (mode) => mode === 'full' || mode === 'both';
+
+const resolveLabel = (req, manualLabel) =>
+  matchEndpointLabel(req.method, req.path) || manualLabel || UNKNOWN_LABEL;
+
+const getRequestMeta = (req) => ({
+  correlationId: req.headers['x-correlation-id'] || `req-${Date.now()}`,
+  userId: req.headers['x-user-id'] || 'anonymous',
+  authToken: req.headers['authorization'] || '',
+  clientIp: req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip,
+  userAgent: req.headers['user-agent'] || '',
+  cfRay: req.headers['cf-ray'] || '',
+});
+
+const elapsedMs = (startHrTime) => {
+  const [sec, nano] = process.hrtime(startHrTime);
+  return +(sec * 1000 + nano / 1e6).toFixed(3);
+};
+
+// Logging must never break (or crash after) the actual response.
+const publishAll = async (messages) => {
+  try {
+    for (const [routingKey, payload] of messages) {
+      await publishToQueue_Redis_Telegraf(routingKey, payload);
+    }
+  } catch (err) {
+    console.error('Log publish failed:', err.message);
+  }
+};
+
 export const logRequestDetails = async (req, manualLabel = '', mode = 'both') => {
-  const startHrTime = process.hrtime();
-  const isoTimestamp = formattedDate(new Date())
-   const currentTimeStamp = new Date().toISOString();;
-  const dynamicLabel = matchEndpointLabel(req.method, req.path) || manualLabel || '🗂️ Unknown Endpoint';
 
-  const correlationId = req.headers['x-correlation-id'] || `req-${Date.now()}`;
-  const userId = req.headers['x-user-id'] || 'anonymous';
-  const authToken = req.headers['authorization'] || '';
-  const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip;
-  const userAgent = req.headers['user-agent'] || '';
-  const cfRay = req.headers['cf-ray'] || '';
+  //skip /metrics endpoint to avoid logging metrics requests
+  if (req.path === '/metrics') {
+    return;
+  }
+  const startHrTime = process.hrtime();
+  const label = resolveLabel(req, manualLabel);
+  const { correlationId, userId, authToken, clientIp, userAgent, cfRay } = getRequestMeta(req);
 
   const shortLog = {
-    time: isoTimestamp,
-    label: dynamicLabel,
-    method: JSON.stringify(req.method),
-    url: JSON.stringify(req.url),
-    protocol: JSON.stringify(req.protocol),
-    correlationId: correlationId,
-    userId:userId,
-    authToken:authToken,
-    clientIp:clientIp,
-    userAgent:userAgent,
-    cfRay:cfRay
-
-  };
-
-    const logData = {
+    time: formattedDate(new Date()),
+    label,
     method: req.method,
-    url: req.originalUrl,
-    ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
-    userAgent: req.headers['user-agent'],
-    timestamp: new Date().toISOString()
+    url: req.url,
+    protocol: req.protocol,
+    correlationId,
+    userId,
+    authToken,
+    clientIp,
+    userAgent,
+    cfRay,
   };
 
   const fullLog = {
@@ -53,29 +70,10 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
     params: req.params,
     query: req.query,
     body: req.body,
-    headers: req.headers
+    headers: req.headers,
   };
 
-  if (mode === 'short' || mode === 'both') {
-   /*
-    console.log(`
-      #######################################################################################3
-      
-      📝 ${dynamicLabel} @ ${isoTimestamp}
-
-      
-      
-      #######################################################################################3
-
-      `);
-
- */
-    //console.table(shortLog);
-  }
-
-  const [sec, nano] = process.hrtime(startHrTime);
-  const durationMs = (sec * 1000 + nano / 1e6).toFixed(3);
-  const durationSeconds = parseFloat(durationMs) / 1000;
+  if (!shouldPublish(mode)) return;
 
   const telegrafLog = buildTelegrafPayload({
     timestamp: getLongTime(new Date()),
@@ -83,181 +81,97 @@ export const logRequestDetails = async (req, manualLabel = '', mode = 'both') =>
     tags: {
       method: req.method,
       path: req.path,
-      label: dynamicLabel,
-      fullLog
+      label,
+      fullLog,
     },
     fields: {
-      duration_ms: parseFloat(durationMs),
+      duration_ms: elapsedMs(startHrTime),
       ip: req.ip,
       hostname: req.hostname,
     },
-    
   });
 
-  if (mode === 'full' || mode === 'both') {
-
- //   await publishToQueue(`logs.request.telegraf.${req.hostname}${req.path}`, telegrafLog);
- //   await publishToQueue(`logs.request.${req.hostname}${req.path}`, fullLog);
-    await publishToQueue_Redis_Telegraf(`logs.request.telegraf.${req.hostname}${req.path}`, telegrafLog);
-    await publishToQueue_Redis_Telegraf(`logs.request.${req.hostname}${req.path}`, fullLog);
-    await publishToQueue_Redis_Telegraf(`logs.request.log.${req.hostname}${req.path}`, shortLog);
-
-
-
-
-    
-  }
-
-  /*
-  // ✅ Prometheus metrics
-  try {
-    httpRequestCount.labels(req.method, req.path, dynamicLabel).inc();
-    httpRequestDuration.labels(req.method, req.path, dynamicLabel).observe(durationSeconds);
-  } catch (err) {
-    console.warn('⚠️ Prometheus metric logging failed:', err.message);
-  }
-
-  */
+  const key = `${req.hostname}${req.path}`;
+  await publishAll([
+    [`logs.request.telegraf.${key}`, telegrafLog],
+    [`logs.request.${key}`, fullLog],
+    [`logs.request.log.${key}`, shortLog],
+  ]);
 };
 
- export const logResponseDetails = async (req, res, payload, manualLabel = '', status=500 ,mode = 'both') => {
+export const logResponseDetails = async (req, res, payload, manualLabel = '', status = 500, mode = 'both') => {
   const startHrTime = process.hrtime();
   const now = new Date();
-  const isoTimestamp = new Date(now).toISOString();
-  const dynamicLabel = matchEndpointLabel(req.method, req.path) || manualLabel || '🗂️ Unknown Endpoint';
-  const Global_Success_Status = false
-  const Global_apiResponse = false
-
-
-  const correlationId = req.headers['x-correlation-id'] || `req-${Date.now()}`;
-  const userId = req.headers['x-user-id'] || 'anonymous';
-  const authToken = req.headers['authorization'] || '';
-  const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip;
-  const userAgent = req.headers['user-agent'] || '';
-  const cfRay = req.headers['cf-ray'] || '';
-
-
-   const message = "" || '';
-   console.log("payload len to be sent", JSON.stringify(payload).length)
+  const isoTimestamp = now.toISOString();
+  const label = resolveLabel(req, manualLabel);
+  const { correlationId } = getRequestMeta(req);
 
   const data = payload || [];
+  const success = status === 200;
 
-  const apiResponse ={
-      success:false,
-      message: message,
-      data: JSON.stringify(payload)
-    } 
-
-  if(status === 200){
-     const apiResponseStatus = {
-    success:true,
-    message:`Success`,
-    data: payload,
-   };
- 
-  res.status(status).send(apiResponseStatus);
-
-   }else{
-
-
-    const apiResponse = {
-    success:false,
-    message:`Failed`,
-    data:JSON.stringify(payload),
-   };
-
- 
+  const apiResponse = success
+    ? { success: true, message: 'Success', data: payload }
+    : { success: false, message: 'Failed', data: JSON.stringify(payload) };
 
   res.status(status).send(apiResponse);
 
+  if (!shouldPublish(mode)) return;
 
-  }
- 
+  const durationMs = elapsedMs(startHrTime);
+  const payloadString = JSON.stringify(payload);
 
-
-
-
-      const logData = {
+  const logData = {
     method: req.method,
     url: req.originalUrl,
-    status: apiResponse.success,
+    status: success,
     message: apiResponse.message,
     ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
-    timestamp: new Date().toISOString(),
-    data: JSON.stringify(apiResponse.data)
+    timestamp: isoTimestamp,
+    data: payloadString,
   };
-
-  const [sec, nano] = process.hrtime(startHrTime);
-  const durationMs = +(sec * 1000 + nano / 1e6).toFixed(3);
-  const durationSeconds = durationMs / 1000;
-
- // const dataLength = Array.isArray(data) ? data.length : 0;
- // const payloadLength= payload.length;
-  const totalProfit = Array.isArray(data)
-
-//    ? data.reduce((sum, item) => sum + (parseFloat(item.productProfit) || 0), 0)
-//    : 0;
 
   const telegrafResponse = buildTelegrafPayload({
     measurement: 'http_responses',
     tags: {
-      correlationId:req.correlationId,
+      correlationId,
       method: req.method,
       path: req.path,
-      label: dynamicLabel,
-      status: apiResponse.success,
+      label,
+      status: success,
     },
     fields: {
-      success: apiResponse.success ? 1 : 0,
-      message_length: message.length || 0,
-      response_size: Buffer.byteLength(JSON.stringify(Global_apiResponse)),
-      data_length:  JSON.stringify(payload).length,
-      data_payload:data,
-      payload:  [`correlationId:${correlationId}`, JSON.stringify(payload)],
+      success: success ? 1 : 0,
+      message_length: apiResponse.message.length,
+      response_size: Buffer.byteLength(JSON.stringify(apiResponse)),
+      data_length: payloadString.length,
+      data_payload: data,
+      payload: [`correlationId:${correlationId}`, payloadString],
       duration_ms: durationMs,
-      payloadSize: payload.length || -1,
-      duration:durationMs,
-      label: dynamicLabel,
+      payloadSize: payload?.length ?? -1,
+      duration: durationMs,
+      label,
       time: isoTimestamp,
-      hostname: req.hostname
-      
+      hostname: req.hostname,
     },
     timestamp: now * 1e6,
   });
 
-  if (mode === 'short' || mode === 'both') {
-    //console.log(`✅ [${status}] ${dynamicLabel} @ ${isoTimestamp}`);
-    console.table({
-      method: req.method,
-      endpoint: req.path,
-      httpsStatus: status,
-      //response_data:  JSON.stringify(payload),
-      duration:durationMs,
-      //label: dynamicLabel,
-      //time: isoTimestamp,
-      //hostname: req.hostname
-    });
-    
-  }
-
-  if (mode === 'full' || mode === 'both') {
-
-    await publishToQueue_Redis_Telegraf(`logs.response.log.${req.hostname}${req.path}`, logData);
-    await publishToQueue_Redis_Telegraf(`logs.response.telegraf.${req.hostname}${req.path}`, telegrafResponse);
-    await publishToQueue_Redis_Telegraf(`logs.responses.${req.hostname}${req.path}`, {
-      time: isoTimestamp,
-      method: req.method,
-      path: req.path,
-      label: dynamicLabel,
-      status:status,
-      responseMeta: apiResponse.success,
-      durationMs,
-      payload: data
-    });
-
-  //  await publishToQueue_Redis_Telegraf(`logs.response.telegraf.${req.hostname}${req.path}`, telegrafLog);
-  //  await publishToQueue_Redis_Telegraf(`logs.response.${req.hostname}${req.path}`, fullLog);
-  }
-
-
+  const key = `${req.hostname}${req.path}`;
+  await publishAll([
+    [`logs.response.log.${key}`, logData],
+    [`logs.response.telegraf.${key}`, telegrafResponse],
+    [
+      `logs.responses.${key}`,
+      {
+        time: isoTimestamp,
+        method: req.method,
+        path: req.path,
+        label,
+        status,
+        responseMeta: success,
+        durationMs,
+        payload: data,
+      },
+    ],
+  ]);
 };

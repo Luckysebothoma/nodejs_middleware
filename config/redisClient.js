@@ -1,28 +1,50 @@
-import { createClient } from 'redis'; // Note: 'ioredis' has different API; if you use 'redis' npm, this is correct
+import { createClient } from 'redis';
 import { redisHost, redisPort } from "../keys.js";
 import TimeUtils from '../utils/Time.js';
-const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
+const { getLongTime } = TimeUtils;
 
-const TTL_SECONDS = 86400;  //24 hours
+const TTL_SECONDS = 86400; // 24 hours
 
-const redisClient = new createClient({
+// ─────────────────────────────────────────────────────────────
+// Client
+// ─────────────────────────────────────────────────────────────
+const redisClient = createClient({
   socket: {
-  host: redisHost,
-      port: redisPort,
+    host: redisHost,
+    port: redisPort,
+    // Keep retrying forever, backing off up to 3s between attempts
+    reconnectStrategy: (retries) => Math.min(retries * 100, 3000),
   },
-//  password: 'system123',  // Add your Redis password here
+  // password: process.env.REDIS_PASSWORD,
 });
 
- 
+redisClient.on('error', (err) => console.error('❌ Redis error:', err.message));
+redisClient.on('ready', () => console.log('✅ Redis ready'));
+redisClient.on('reconnecting', () => console.warn('⚠️ Redis reconnecting...'));
 
-redisClient.on('error', (err) => {
-  console.error('❌ Redis error:', err);
-});
+// ─────────────────────────────────────────────────────────────
+// Connection handling
+// ─────────────────────────────────────────────────────────────
+let connectPromise = null;
 
+/**
+ * Idempotent and safe to call concurrently. Every cache operation goes
+ * through this (via withRedis), so it no longer matters which one runs first.
+ */
 const connectRedis = async () => {
+  if (redisClient.isReady) return true;
+
+  // If the client is already open it is mid-connect or mid-reconnect;
+  // node-redis handles that itself, so we must not call connect() again.
+  if (redisClient.isOpen) return true;
+
   try {
-    if (!redisClient.isOpen) await redisClient.connect();
-    console.log('✅ Redis connected');
+    if (!connectPromise) {
+      connectPromise = redisClient.connect().finally(() => {
+        connectPromise = null;
+      });
+    }
+    await connectPromise;
     return true;
   } catch (err) {
     console.error('❌ Redis connection error:', err.message);
@@ -32,150 +54,103 @@ const connectRedis = async () => {
 
 const apiResponse = (success, message, data) => ({ success, message, data });
 
-const cacheSet = async (key, value, ttlSeconds = TTL_SECONDS) => {
-
-  const isConnected = await connectRedis();
-  if (!isConnected) {
-    console.error('❌ Redis connection error: could not (re)connect before cacheSet');
+/**
+ * Wraps every Redis operation with the same connect + error handling.
+ * Never throws; always resolves to { success, message, data }.
+ */
+const withRedis = async (label, fn, failValue = null) => {
+  if (!(await connectRedis())) {
+    return apiResponse(false, `❌ ${label} failed: Redis unavailable`, failValue);
   }
-
   try {
+    return await fn();
+  } catch (err) {
+    return apiResponse(false, `❌ ${label} failed: ${err.message}`, failValue);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Core operations
+// ─────────────────────────────────────────────────────────────
+const cacheSet = (key, value, ttlSeconds = TTL_SECONDS) =>
+  withRedis('Cache set', async () => {
     await redisClient.setEx(key, ttlSeconds, JSON.stringify(value));
     return apiResponse(true, 'Cached successfully', null);
+  });
 
-  } catch (err) {
-    return apiResponse(false, '❌ Cache set failed: ' + err.message, null);
-  }
-};
-
-const refreshKey = async (key) => {
-
-  if((await cacheExists(key)).success){
-    cacheDelete(key);
-  }
-  
-
-}
-export const cacheExists = async (key) => {
-  try {
-    const result = await redisClient.exists(key); // returns 1 or 0
-    return {
-      success: true,
-      message: result === 1 ? 'Key exists' : 'Key does not exist',
-      data: result === 1,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      message: '❌ EXISTS check failed: ' + err.message,
-      data: false,
-    };
-  }
-};
-
-
-const cacheGet = async (key) => {
-  try {
+const cacheGet = (key) =>
+  withRedis('Cache get', async () => {
     const raw = await redisClient.get(key);
-    if (!raw) return apiResponse(false, 'Cache miss', null);
-
+    if (raw === null) return apiResponse(false, 'Cache miss', null);
     return apiResponse(true, 'Cache hit', JSON.parse(raw));
-  } catch (err) {
-    return apiResponse(false, '❌ Cache get failed: ' + err.message, null);
-  }
-};
+  });
 
-const cacheDelete = async (key) => {
-  try {
-    const result = await redisClient.del(key);
-    return apiResponse(true, result > 0 ? 'Key deleted' : 'Key not found', null);
-  } catch (err) {
-    return apiResponse(false, '❌ Cache delete failed: ' + err.message, null);
-  }
-};
+const cacheDelete = (key) =>
+  withRedis('Cache delete', async () => {
+    const count = await redisClient.del(key);
+    return apiResponse(true, count > 0 ? 'Key deleted' : 'Key not found', null);
+  });
 
-//module.exports = { connectRedis, cacheSet, cacheGet, cacheDelete };
-// NOTE: ../config/redisClient.js's cacheGet returns an apiResponse envelope
-// shaped { success, message, data } (NOT { value }). `success: false` means
-// either a genuine cache miss OR that the Redis call itself failed — either
-// way that's a miss from this caller's point of view. Only `data` (already
-// JSON.parsed by cacheGet) is the actual cached value. Getting this shape
-// wrong previously meant every lookup — hit or miss — returned a truthy
-// wrapper object and was treated as a hit, so reads never fell through to
-// Postgres/MySQL at all.
+export const cacheExists = (key) =>
+  withRedis('EXISTS check', async () => {
+    const count = await redisClient.exists(key); // 1 or 0
+    return apiResponse(true, count === 1 ? 'Key exists' : 'Key does not exist', count === 1);
+  }, false);
+
+// DEL on a missing key is a harmless no-op, so no exists() check is needed.
+const refreshKey = (key) => cacheDelete(key);
+
+// ─────────────────────────────────────────────────────────────
+// Caller-friendly helpers
+// ─────────────────────────────────────────────────────────────
+
+// cacheGet returns an envelope { success, message, data } (NOT { value }).
+// success:false means either a genuine miss or that Redis itself failed;
+// both are a miss from the caller's point of view, so fall through to the DB.
 const tryGetFromCache = async (key) => {
   try {
     const cached = await cacheGet(key);
-    if (!cached || !cached.success) return null; // miss, or the Redis call itself failed
+    if (!cached?.success) return null;
 
-    const raw = cached.data;
-    if (raw === undefined || raw === null) return null;
-
-    // Defensive fallback only — cacheGet already JSON.parses, so `raw` should
-    // already be the real value, not a JSON string. Kept in case the
-    // underlying client implementation ever changes shape.
-    if (typeof raw === 'string') {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return raw;
-      }
-    }
-
-    return raw;
+    const value = cached.data;
+    if (value === undefined || value === null) return null;
+    return value;
   } catch (err) {
     console.warn(`${getLongTime()}⚠️ Cache read failed for key [${key}]:`, err.message);
     return null;
   }
 };
 
-// Cache-set that automatically shortens the TTL for empty results, so a
-// false negative can't camp out in Redis for TTL_SECONDS.
-// cacheSet/cacheDelete also return { success, message, data } and do NOT
-// throw on Redis failures (they catch internally) — so a plain try/catch
-// here would never notice a failed write. Check `.success` explicitly.
-// 📌 TTL for cache entries (seconds) — real, non-empty results
-
-// NEGATIVE_CACHE_TTL_SECONDS removed — empty results are no longer cached at all.
-
-// Cache-set that skips writing to Redis entirely when the value is an empty
-// result. There is deliberately no "negative cache" tier anymore: an empty
-// `[]` from Postgres/MySQL just isn't written to Redis, so the next read
-// always re-checks the database rather than trusting a cached "not found".
+// Empty arrays are never cached (no negative caching), so the next read
+// always re-checks the database instead of trusting a cached "not found".
 const safeCacheSet = async (key, value) => {
-  const isEmpty = Array.isArray(value) && value.length === 0;
-  if (isEmpty) {
+  if (Array.isArray(value) && value.length === 0) {
     console.log(`${getLongTime()}⏭️  Skipping cache write for key [${key}] — empty result, not cached`);
     return;
   }
-  try {
-    const result = await cacheSet(key, value, TTL_SECONDS);
-    if (!result?.success) {
-      console.warn(`${getLongTime()}⚠️ Cache write failed for key [${key}]:`, result?.message);
-    }
-  } catch (err) {
-    console.warn(`${getLongTime()}⚠️ Cache write failed for key [${key}]:`, err.message);
+  const result = await cacheSet(key, value, TTL_SECONDS);
+  if (!result.success) {
+    console.warn(`${getLongTime()}⚠️ Cache write failed for key [${key}]:`, result.message);
   }
 };
 
-// Invalidate (delete) a cache key. This is now the primary write-side sync
-// mechanism — see the "CHANGES" note at the top of this file for why this
-// replaced a plain TTL refresh.
+// Primary write-side sync mechanism: delete the key so the next read
+// repopulates it from the database.
 const safeInvalidateKey = async (key) => {
-  try {
-    const result = await cacheDelete(key);
-    if (!result?.success) {
-      console.warn(`${getLongTime()}⚠️ Cache invalidation failed for key [${key}]:`, result?.message);
-    }
-  } catch (err) {
-    console.warn(`${getLongTime()}⚠️ Cache invalidation failed for key [${key}]:`, err.message);
+  const result = await cacheDelete(key);
+  if (!result.success) {
+    console.warn(`${getLongTime()}⚠️ Cache invalidation failed for key [${key}]:`, result.message);
   }
 };
 
-// Sync a row set found in MySQL back into Postgres, in the background.
-// `pgBackfillQuery` is caller-supplied because only the caller knows the
-// target table/columns/conflict key: either a static { text, values } spec,
-// or a function (rows) => { text, values } built from what MySQL returned.
-
-
-export default {connectRedis, cacheSet, cacheGet, cacheDelete, cacheExists, refreshKey, safeInvalidateKey, safeCacheSet, tryGetFromCache};
+export default {
+  connectRedis,
+  cacheSet,
+  cacheGet,
+  cacheDelete,
+  cacheExists,
+  refreshKey,
+  safeInvalidateKey,
+  safeCacheSet,
+  tryGetFromCache,
+};
