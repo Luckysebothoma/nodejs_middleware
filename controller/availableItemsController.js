@@ -75,7 +75,7 @@ const getAvailableItems = async (req, res) => {
   // { text, values } specs, not positional (mysqlQuery, pgQuery) args.
   const mysqlQuery = { text: `SELECT * FROM ${cacheKey}` };
   const pgQuery = { text: `SELECT * FROM ${cacheKey}` };
-  console.log("Now Quering : Key[" + cacheKey + "] mysl:" + mysqlQuery.text + "pgSql:" + pgQuery.text);
+  //console.log("Now Quering : Key[" + cacheKey + "] mysl:" + mysqlQuery.text + "pgSql:" + pgQuery.text);
   try {
     const data = await getCachedOrQuery(cacheKey, { pgQuery, mysqlQuery });
     return logResponseDetails(req,res,data,cacheKey,200)
@@ -229,7 +229,7 @@ const addAvailableItems = async(req, res) => {
                 INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
                 VALUES (?, ?, ?)
                 ON DUPLICATE KEY UPDATE
-                    itemsRemaining = itemsRemaining + VALUES(itemsRemaining),
+                    itemsRemaining = itemsRemaining + VALUES(itemsRemaining) +1,
                     lastUpdated = VALUES(lastUpdated)
             `,
             values: [productId, itemsRemaining, normalizedDate],
@@ -240,7 +240,7 @@ const addAvailableItems = async(req, res) => {
                 INSERT INTO availableItems ("productId", "itemsRemaining", "lastUpdated")
                 VALUES ($1, $2, $3)
                 ON CONFLICT ("productId") DO UPDATE SET
-                    "itemsRemaining" = availableItems."itemsRemaining" + EXCLUDED."itemsRemaining",
+                    "itemsRemaining" = availableItems."itemsRemaining" + EXCLUDED."itemsRemaining" + 1,
                     "lastUpdated" = EXCLUDED."lastUpdated"
             `,
             values: [productId, itemsRemaining, normalizedDate],

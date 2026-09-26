@@ -5,8 +5,9 @@ const { formattedDate, getShortTime, getMidTime, getLongTime } = TimeUtils;
 
 import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js';
 
-import { getConnection, mysqlPool } from '../config/db.js'
- 
+import { getConnection, mysqlPool } from '../config/db.js';
+import multer from 'multer';
+import { pgClient } from '../config/postgres.js';
 
 const {
   getCachedOrQuery,
@@ -15,25 +16,21 @@ const {
   removeCachedAndQuery
 } = ControllerHandler;
 
-
 const productPricingKey = "productPricing";
-const availableItemsKey = "availableItems"
-const cartListKey = "cartList"
-const estimatesKey = "estimates"
-const productInventoryKey = "productInventory"
-const productItemPricingKey = "productItemPricing"
-const productListKey = "productList"
-const sodEodItemsKey = "sodEodItems"
-const stockItemsKey = "stockItems"
-const stockedItemsKey = "stockedItems"
+const availableItemsKey = "availableItems";
+const cartListKey = "cartList";
+const estimatesKey = "estimates";
+const productInventoryKey = "productInventory";
+const productItemPricingKey = "productItemPricing";
+const productListKey = "productList";
+const sodEodItemsKey = "sodEodItems";
+const stockItemsKey = "stockItems";
+const stockedItemsKey = "stockedItems";
 
+// ---------------------------------------------------------------------------
+// File upload handling
+// ---------------------------------------------------------------------------
 
-// uploadHandler.js
-import multer from 'multer';
-import path from 'path';
-import { pgClient } from '../config/postgres.js';
-
-// File storage config
 const storage = multer.diskStorage({
   destination: './uploads',
   filename: (req, file, cb) => {
@@ -42,7 +39,6 @@ const storage = multer.diskStorage({
 });
 export const upload = multer({ storage });
 
-// Reusable function
 export async function handleFileUpload(req, res) {
   try {
     const productId = req.body.product_id;
@@ -54,17 +50,19 @@ export async function handleFileUpload(req, res) {
 
     const client = await pgClient.connect();
 
-    for (let file of files) {
-      const imageUrl = `/uploads/${file.filename}`;
-
-      // Assume there's a column 'image_url' and a table 'products'
-      await client.query(
-        'UPDATE products SET image_url = $1 WHERE id = $2',
-        [imageUrl, productId]
-      );
+    try {
+      for (const file of files) {
+        const imageUrl = `/uploads/${file.filename}`;
+        await client.query(
+          'UPDATE products SET image_url = $1 WHERE id = $2',
+          [imageUrl, productId]
+        );
+      }
+    } finally {
+      // NOTE: release() belongs in `finally` so a failed UPDATE mid-loop
+      // doesn't leak the pg client.
+      client.release();
     }
-
-    client.release();
 
     res.status(200).json({ message: 'Upload successful.' });
   } catch (err) {
@@ -73,272 +71,24 @@ export async function handleFileUpload(req, res) {
   }
 }
 
-
-
-
-/*
-const updateProducts_Batch = async (req, res) => {
-  const { productList, pricingList, availableItems, priceTracingList } = req.body;
-  const connection = await getConnection();
-
-  // Pretty log the full incoming body
-  console.log("🟢 updateProducts_Batch called with body:\n", JSON.stringify(req.body, null, 2));
-
-  // Validate presence of root-level fields
-  const missingFields = [];
-  if (!productList) missingFields.push("productList");
-  if (!pricingList) missingFields.push("pricingList");
-  if (!availableItems) missingFields.push("availableItems");
-  if (!priceTracingList) missingFields.push("priceTracingList");
-
-  if (missingFields.length > 0) {
-    console.error("❌ Missing required root fields:", missingFields);
-    return res.status(400).json({ error: `Missing required fields: ${missingFields.join(", ")}` });
-  }
-
-  // Validate content of each array
-  const invalidEntries = [];
-
-  productList.forEach((p, i) => {
-    if (!p.productId || !p.productName || !p.productPrice) {
-      invalidEntries.push({ type: "productList", index: i, entry: p });
-    }
-  });
-
-  pricingList.forEach((p, i) => {
-    if (!p.productId || p.sellingPrice == null || p.productSize == null) {
-      invalidEntries.push({ type: "pricingList", index: i, entry: p });
-    }
-  });
-
-  availableItems.forEach((item, i) => {
-    if (!item.productId || item.itemsRemaining == null) {
-      invalidEntries.push({ type: "availableItems", index: i, entry: item });
-    }
-  });
-
-  priceTracingList.forEach((t, i) => {
-    if (!t.productId || !t.date) {
-      invalidEntries.push({ type: "priceTracingList", index: i, entry: t });
-    }
-  });
-
-  if (invalidEntries.length > 0) {
-    console.error("❌ Invalid sub-items detected:", JSON.stringify(invalidEntries, null, 2));
-    return res.status(400).json({ error: "Invalid entries in input data", invalidEntries });
-  }
-
-  try {
-    await connection.beginTransaction();
-
-    // ProductList insert
-    for (const p of productList) {
-      await connection.query(
-        `INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url) VALUES (?, ?, ?, ?, ?)`,
-        [p.productId, p.productName, p.productFlavor, p.productPrice, p.image_url]
-      );
-    }
-
-    // ProductPricing insert
-    for (const p of pricingList) {
-      await connection.query(
-        `INSERT INTO productPricing (productId, productSize, productQuantity, costPerItem, productProfit, sellingPrice, productCommission, itemGrouping)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          p.productId, p.productSize, p.productQuantity, p.costPerItem,
-          p.productProfit, p.sellingPrice, p.productCommission, p.itemGrouping
-        ]
-      );
-    }
-
-    // AvailableItems insert
-    for (const item of availableItems) {
-      await connection.query(
-        `INSERT INTO availableItems (productId, itemsRemaining, lastUpdated)
-         VALUES (?, ?, ?)`,
-        [item.productId, item.itemsRemaining, item.lastUpdated || new Date()]
-      );
-    }
-
-    // PriceTracing insert
-    for (const trace of priceTracingList) {
-      await connection.query(
-        `INSERT INTO priceTracing (productId, accAmount, date)
-         VALUES (?, ?, ?)`,
-        [trace.productId, trace.accAmount, trace.date]
-      );
-    }
-
-    await connection.commit();
-    console.log("✅ Batch insert successful.");
-return logResponseDetails(req, res, {
-      status: 200,
-      success: true });
-  } catch (error) {
-    await connection.rollback();
-    console.error("🔥 Batch insert error:", error);
-   return logResponseDetails(req, res, {
-      status: 500,
-     error: "Internal server error", details: error.message });
-  } finally {
-    await connection.end();
-  }
-};
-
-
-*/
-
-/*
-const updateProducts_Batch = async(req, res) =>{
-  
-  const { productList, pricingList, availableItems, priceTracingList } = req.body;
-
-  const connection = await getConnection();
-
-  // add req to logger and valid the passed var and display whats invalid or missing
-  console.log("updateProducts_Batch called with body:", req.body);
-
-  const missingFields = [];
-  if (!productList) missingFields.push("productList");
-  if (!pricingList) missingFields.push("pricingList");
-  if (!availableItems) missingFields.push("availableItems");
-  if (!priceTracingList) missingFields.push("priceTracingList");
-
-  if (missingFields.length > 0) {
-    console.error("Missing required fields:", missingFields);
-    return res.status(400).json({ error: `Missing required fields: ${missingFields.join(", ")}` });
-  }
-
-  try {
-    await connection.beginTransaction();
-
-    // ProductList insert
-    for (const p of productList) {
-      await connection.query(
-        'INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url) VALUES (?, ?, ?, ?, ?)',
-        [p.productId, p.productName, p.productFlavor, p.productPrice, p.image_url]
-      );
-    }
-
-    // ProductPricing insert
-    for (const p of pricingList) {
-      await connection.query(
-        'INSERT INTO productPricing (productId, productSize, productQuantity, costPerItem, productProfit, sellingPrice, productCommission, itemGrouping) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          p.productId, p.productSize, p.productQuantity, p.costPerItem,
-          p.productProfit, p.sellingPrice, p.productCommission, p.itemGrouping
-        ]
-      );
-    }
-
-    // AvailableItem insert
-    for (const item of availableItems) {
-      await connection.query(
-        `INSERT INTO availableItems (productId, itemsRemaining, lastUpdated) VALUES (?, ?, ?)`, 
-        [item.productId ]
-      );
-    }
-
-      
-
-    // PriceTracing insert
-    for (const trace of priceTracingList) {
-      await connection.query(
-        'INSERT INTO priceTracing (productId, accAmount, date) VALUES (?, ?, ?)',
-        [trace.productId, trace.accAmount, trace.date]
-      );
-    }
-
-    await connection.commit();
-return logResponseDetails(req, res, {
-      status: 200,
-      success: true });
-  } catch (error) {
-    await connection.rollback();
-    console.error("Batch insert error:", error);
-   return logResponseDetails(req, res, {
-      status: 500,
-     error: error.message });
-  } finally {
-    await connection.end();
-  }
-}
-
-*/
-
-/*
-const addNewCandy = async(req, res) =>{
-    const connection = await getConnection(); // Get a connection from the pool
-    await connection.beginTransaction(); // Start the transaction
-
-
-    try {
-        const { product, yummy, availableItem, priceTracing } = req.body;
-    
-        // Step 1: Add Product
-        const [productResult] = await connection.execute(
-          'INSERT INTO products (name, description, price) VALUES (?, ?, ?)',
-          [product.name, product.description, product.price]
-        );
-    
-        // Step 2: Add Yummy
-        const [yummyResult] = await connection.execute(
-          'INSERT INTO yummies (name, taste, product_id) VALUES (?, ?, ?)',
-          [yummy.name, yummy.taste, productResult.insertId]
-        );
-    
-        // Step 3: Add Available Items
-        await connection.execute(
-          'INSERT INTO available_items (product_id, quantity) VALUES (?, ?)',
-          [productResult.insertId, availableItem.quantity]
-        );
-    
-        // Step 4: Add Price Tracing
-        await connection.execute(
-          'INSERT INTO price_tracing (product_id, old_price, new_price) VALUES (?, ?, ?)',
-          [productResult.insertId, priceTracing.oldPrice, priceTracing.newPrice]
-        );
-    
-        // If all queries are successful, commit the transaction
-        await connection.commit();
-          logResponseDetails(req, res,  {
-        status: 200, success: true, message: 'All records added successfully!' });
-    
-      } catch (error) {
-        // If an error occurs, rollback the transaction
-        await connection.rollback();
-        console.error('Transaction failed, rolled back:', error);
-      return logResponseDetails(req, res, {
-      status: 500,
-     success: false, message: 'Transaction failed', error });
-      } finally {
-        connection.release(); // Release the connection back to the pool
-      }
-
-    };
-
-*/
-
+// ---------------------------------------------------------------------------
+// updateProducts_Batch
+// ---------------------------------------------------------------------------
 
 const updateProducts_Batch = async (req, res) => {
-
   logRequestDetails(req, "updateProducts_Batch");
 
   const { productList, pricingList, availableItems, priceTracingList } = req.body;
 
-  // NOTE: `connection` was declared with `const` inside this try block, which
-  // scoped it to the block — every reference below (beginTransaction, query,
-  // commit, rollback, release) was a ReferenceError. Hoisted the declaration
-  // so it's visible for the rest of the function.
+  // `connection` is declared outside the try block so it stays in scope for
+  // beginTransaction/query/commit/rollback/release below.
   let connection;
-  try{
+  try {
     connection = await getConnection();
-  }catch(err){
+  } catch (err) {
     console.error("🔥 Error getting MySQL connection:", err);
     return res.status(500).json({ message: 'Error getting MySQL connection' });
-
   }
-
 
   console.log("🟢 updateProducts_Batch called with body:\n", JSON.stringify(req.body, null, 2));
 
@@ -350,308 +100,223 @@ const updateProducts_Batch = async (req, res) => {
 
   if (missingFields.length > 0) {
     console.error("❌ Missing required root fields:", missingFields);
-
-    // NOTE: `cacheKey` was never defined anywhere in this file — this threw
-    // ReferenceError before a response could be sent. Using a plain string
-    // like the rest of this file's logResponseDetails calls do.
-    return logResponseDetails(req, res, {
-      status: 400,
-      error: `Missing required fields: ${missingFields.join(", ")}`
-    },"updateProducts_Batch",400);
+    connection.release();
+    return logResponseDetails(
+      req, res,
+      { status: 400, error: `Missing required fields: ${missingFields.join(", ")}` },
+      "updateProducts_Batch", 400
+    );
   }
 
   try {
     await connection.beginTransaction();
 
-
+    await connection.query(
+      "INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE productName = VALUES(productName), productFlavor = VALUES(productFlavor), productPrice = VALUES(productPrice), image_url = VALUES(image_url)",
+      [productList.productId, productList.productName, productList.productFlavor, productList.productPrice, productList.image_url]
+    );
 
     await connection.query(
-        "INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE productName = VALUES(productName), productFlavor = VALUES(productFlavor), productPrice = VALUES(productPrice), image_url = VALUES(image_url)",
-        [productList.productId, productList.productName, productList.productFlavor, productList.productPrice, productList.image_url]
-      );
-
-
-  
-    await connection.query(
-        "INSERT INTO productPricing (productId, productSize, productQuantity, costPerItem, productProfit, sellingPrice, productCommission, itemGrouping) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE productSize = VALUES(productSize), productQuantity = VALUES(productQuantity), costPerItem = VALUES(costPerItem), productProfit = VALUES(productProfit), sellingPrice = VALUES(sellingPrice), productCommission = VALUES(productCommission), itemGrouping = VALUES(itemGrouping)",
-        [
-          pricingList.productId, pricingList.productSize, pricingList.productQuantity, pricingList.costPerItem,
-          pricingList.productProfit, pricingList.sellingPrice, pricingList.productCommission, pricingList.itemGrouping
-        ]
-      );
-
-   
+      "INSERT INTO productPricing (productId, productSize, productQuantity, costPerItem, productProfit, sellingPrice, productCommission, itemGrouping) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE productSize = VALUES(productSize), productQuantity = VALUES(productQuantity), costPerItem = VALUES(costPerItem), productProfit = VALUES(productProfit), sellingPrice = VALUES(sellingPrice), productCommission = VALUES(productCommission), itemGrouping = VALUES(itemGrouping)",
+      [
+        pricingList.productId, pricingList.productSize, pricingList.productQuantity, pricingList.costPerItem,
+        pricingList.productProfit, pricingList.sellingPrice, pricingList.productCommission, pricingList.itemGrouping
+      ]
+    );
 
     await connection.query(
-        "INSERT INTO availableItems (productId, itemsRemaining, lastUpdated) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE itemsRemaining = VALUES(itemsRemaining), lastUpdated = VALUES(lastUpdated)",
-        [availableItems.productId, availableItems.itemsRemaining, formatForMySQL(availableItems.lastUpdated)]
-      );
-
+      "INSERT INTO availableItems (productId, itemsRemaining, lastUpdated) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE itemsRemaining = VALUES(itemsRemaining), lastUpdated = VALUES(lastUpdated)",
+      [availableItems.productId, availableItems.itemsRemaining, formatForMySQL(availableItems.lastUpdated)]
+    );
 
     await connection.query(
-        "INSERT INTO priceTracing (productId, accAmount, date) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE accAmount = VALUES(accAmount), date = VALUES(date)",
-        [priceTracingList.productId, priceTracingList.accAmount, priceTracingList.date]
-      );
+      "INSERT INTO priceTracing (productId, accAmount, date) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE accAmount = VALUES(accAmount), date = VALUES(date)",
+      [priceTracingList.productId, priceTracingList.accAmount, priceTracingList.date]
+    );
 
-
-
-      
     await connection.commit();
     console.log("✅ Batch upsert completed.");
-return logResponseDetails(req, res, {
-      status: 200,
-      success: true },"updateProducts_Batch",200);
+    return logResponseDetails(req, res, { status: 200, success: true }, "updateProducts_Batch", 200);
 
-    
   } catch (error) {
     await connection.rollback();
     console.error("🔥 Batch upsert error:", error);
-   return logResponseDetails(req, res, {
-      status: 500,
-     error: "Internal server error", details: error.message },"updateProducts_Batch",500);
-
+    return logResponseDetails(
+      req, res,
+      { status: 500, error: "Internal server error", details: error.message },
+      "updateProducts_Batch", 500
+    );
   } finally {
-    // NOTE: was `connection.end()`, which closes/destroys a pooled
-    // connection instead of returning it to the pool — every call through
-    // this endpoint would permanently shrink the pool. Everywhere else in
-    // this file releases pooled connections with `.release()`.
+    // `.release()` returns a pooled connection to the pool; `.end()` would
+    // destroy it and permanently shrink the pool on every call.
     connection.release();
   }
 };
 
+// ---------------------------------------------------------------------------
+// addNewCandy_with_image
+// ---------------------------------------------------------------------------
 
+const addNewCandy_with_image = async (req, res) => {
+  logRequestDetails(req, "addNewCandy_with_image");
 
-const addNewCandy_with_image = async(req,res) => {
+  try {
+    const {
+      addProductListRequest,
+      addProductPricingRequest,
+      addAvailableItemsRequest,
+      addPriceTracing
+    } = req.body;
 
+    const file = req.file; // multer adds the file here
 
-      logRequestDetails(req, "addNewCandy_with_image");
-    console.log(req,"addNewCandy_with_image Started");
+    console.log(`Image: ${JSON.stringify(file)}
+  ProductList: ${JSON.stringify(addProductListRequest)}
+  Pricing: ${JSON.stringify(addProductPricingRequest)}
+  Available Items: ${JSON.stringify(addAvailableItemsRequest)}
+  Price Tracing: ${JSON.stringify(addPriceTracing)}
+  `);
 
-    // JSON fields sent as string, so parse them
-const {
-  addProductListRequest,
-  addProductPricingRequest,
-  addAvailableItemsRequest,
-  addPriceTracing
-} = req.body;
+    if (!file) {
+      return logResponseDetails(
+        req, res,
+        { success: false, message: "No image file uploaded" },
+        "addNewCandy_with_image", 400
+      );
+    }
 
-const file = req.file; // multer adds the file here
+    // Must be awaited: without it, the image insert below could run before
+    // the candy records finished writing, and any error thrown inside
+    // addNewCandy_function would become an unhandled promise rejection
+    // instead of being caught by this try/catch.
+    await addNewCandy_function(addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing);
+    console.log("Done adding product, now adding image");
 
-console.log(`Image: ${JSON.stringify(file)}
-  ProductLIst ${JSON.stringify(addProductListRequest)}
- Pprincing ${JSON.stringify(addProductPricingRequest)}
-  A Items ${JSON.stringify(addAvailableItemsRequest)}
-  Add Price Tracimg ${JSON.stringify(addPriceTracing)}
-  `)
-    
+    const imageInsertQuery = `
+      INSERT INTO images (filename, mimetype, size, created_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (filename) DO UPDATE SET
+        mimetype = EXCLUDED.mimetype,
+        size = EXCLUDED.size,
+        created_at = NOW()
+    `;
+    const imageReplacements = [file.filename, file.mimetype, file.size];
 
-  
-   //logRequestDetails(req, "addNewCandy_with_image");
+    // This is Postgres syntax ($1/$2/$3, ON CONFLICT), so it belongs under
+    // pgQuery, not mysqlQuery.
+    const responses = await addCachedAndQuery("images", {
+      pgQuery: { text: imageInsertQuery, values: imageReplacements }
+    });
+    console.log("Response after adding image:", responses);
 
-  //console.log("addNewCandy_with_image Started")
-//  const { addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing, file } = req.body;
+    return logResponseDetails(
+      req, res,
+      { success: true, message: "Candy and image added successfully", responses },
+      "images", 200
+    );
+  } catch (error) {
+    // Without this catch, any failure above (missing file aside) becomes an
+    // unhandled promise rejection and the client hangs until it times out.
+    console.error("🔥 addNewCandy_with_image failed:", error);
+    return logResponseDetails(
+      req, res,
+      { success: false, message: error.message || String(error) },
+      "addNewCandy_with_image", 500
+    );
+  }
+};
 
-  // You can now use these variables as needed
-  // Example: pass them to your function
-  // NOTE: was fired without `await` — the image insert below could run
-  // before the candy records finished writing, and any error thrown inside
-  // addNewCandy_function would become an unhandled promise rejection
-  // instead of being caught here.
-  await addNewCandy_function(addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing);
-  console.log("DOne Adding product, Now adding image")
+// ---------------------------------------------------------------------------
+// addNewCandy
+// ---------------------------------------------------------------------------
 
-  //Create mysql insert statement
-  // Example: Insert uploaded image metadata into a table called 'product_images'
-  // Assuming 'file' contains: { filename, mimetype, size }
-const imageInsertQuery = `
-  INSERT INTO images (filename, mimetype, size, created_at)
-  VALUES ($1, $2, $3, NOW())
-  ON CONFLICT (filename) DO UPDATE SET
-    mimetype = EXCLUDED.mimetype,
-    size = EXCLUDED.size,
-    created_at = NOW()
-`;
-
-const imageReplacements = [
-  file.filename,
-  file.mimetype,
-  file.size
-];
-
-
-  // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
-  // { text, values } specs, not positional (query, replacements) args.
-  // This query is Postgres syntax ($1/$2/$3, ON CONFLICT), so it belongs
-  // under pgQuery, not mysqlQuery — there is no MySQL variant here.
-  const responses = await addCachedAndQuery("images", { pgQuery: { text: imageInsertQuery, values: imageReplacements } });
-console.log("Response after adding products ", responses)
-
-  //await mysqlPool.query(imageInsertQuery, imageReplacements);
-
-  // NOTE: this handler never sent a response, so the client would hang
-  // until the request timed out.
-  return logResponseDetails(req, res, {
-    success: true,
-    message: "Candy and image added successfully",
-    responses
-  }, "images", 200);
-}
-const addNewCandy = async(req, res) =>{
-
-   logRequestDetails(req, "addNewCandy");
+const addNewCandy = async (req, res) => {
+  logRequestDetails(req, "addNewCandy");
 
   const { addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing } = req.body;
-    
-  try{
 
-
-    const connection = await getConnection(); // Get a connection from the pool
-        // Process each part as needed
-    // NOTE: this used to call res.json({ message: 'Data received successfully' })
-    // here, before the transaction even started. That made every
-    // logResponseDetails call further down dead code (guarded by
-    // `!res.headersSent`) and always told the client the request succeeded,
-    // even if the transaction below failed and rolled back. Removed so the
-    // real result is what gets sent to the client.
-
-    await connection.beginTransaction(); // Start the transaction
-
-    // Example of logging each part
-    //console.log("" + ' \n Add Product Request:', addProductListRequest);
-
-    //console.log("" + '\n Add Yummy Request:', addProductPricingRequest);
-
-    //console.log("" + '\n Add Available Items:', addAvailableItemsRequest);
-
-    //console.log("" + '\n Add Price Tracing:', addPriceTracing);
-
-    try {
-    const productResult = await addProductRecord(addProductListRequest, connection);
-    const yummyResult = await addYummyRecord(addProductPricingRequest, connection);
-    const available_itemsResult = await addAvailableItems(addAvailableItemsRequest, connection)
-    const price_tracing_Result = await addPriceTrace(addPriceTracing, connection);
-
-    /*
-    // Example of logging each part
-    console.log(productResult + ' \n Add Product Request:', addProductListRequest);
-
-    console.log(yummyResult + '\n Add Yummy Request:', addProductPricingRequest);
-
-    console.log(available_itemsResult + '\n Add Available Items:', addAvailableItemsRequest);
-
-    console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
-    */
-    // NOTE: was `connection.commit();` without `await` — the response below
-    // could fire before the commit actually finished.
-    await connection.commit(); // Lats Operation to commit to database
-      
-
-} catch (error) {
-  await connection.rollback(); // Always await rollback
-  const errorMessage = `${getLongTime()}: 🔥 Rollback Operation: ${error}`;
-  
-  console.error(errorMessage);
-
-  if (!res.headersSent) {
-   return logResponseDetails(req, res, {
-      status: 500,
-     success: false, message: errorMessage },"addNewCandy",500);
-  }
-
-} finally {
-  connection.release();
-
-  // ✅ Only send success if no headers have been sent (not in error)
-    console.log('✅ Transaction completed successfully. All records added. for productId:', addProductListRequest.productId);
-
-  if (!res.headersSent) {
-    return   logResponseDetails(req, res,  {
-        status: 200,
-      success: true,
-      message: `${getLongTime()}: Operation completed successfully`,
-    },"addNewCandy",200);
-  }
-}
-
-  }catch(err){
+  let connection;
+  try {
+    connection = await getConnection();
+  } catch (err) {
     console.error("🔥 Error getting MySQL connection:", err);
     return res.status(500).json({ message: 'Error getting MySQL connection' });
   }
 
+  try {
+    await connection.beginTransaction();
 
+    try {
+      const productResult = await addProductRecord(addProductListRequest, connection);
+      const yummyResult = await addYummyRecord(addProductPricingRequest, connection);
+      const available_itemsResult = await addAvailableItems(addAvailableItemsRequest, connection);
+      const price_tracing_Result = await addPriceTrace(addPriceTracing, connection);
 
+      // Must be awaited so the success response below only fires once the
+      // commit has actually finished.
+      await connection.commit();
 
-}
+    } catch (error) {
+      await connection.rollback();
+      const errorMessage = `${getLongTime()}: 🔥 Rollback Operation: ${error}`;
+      console.error(errorMessage);
 
-export const deleteAllProductDataS = async (req, res)=> { 
+      if (!res.headersSent) {
+        return logResponseDetails(
+          req, res,
+          { status: 500, success: false, message: errorMessage },
+          "addNewCandy", 500
+        );
+      }
+    } finally {
+      connection.release();
 
-  const productId = req.params.id;
-
-  if(!productId){
-    logResponseDetails(req,res,
-      {
-        success: false,
-        message: "Missing product List value for Deleing all products"
-      },"deleteAllProductData",500
-    )
-
-  }
-  const dataTargets = [
-    { key: "productPricing", table: "productPricing" },
-    { key: "availableItems", table: "availableItems" },
-    { key: "cartList", table: "cartList" },
-    { key: "estimates", table: "estimates" },
-    { key: "productItemPricing", table: "productItemPricing" },
-    { key: "productList", table: "productList" },
-    { key: "sodEodItems", table: "sodEodItems" },
-    { key: "stockItems", table: "stockItems" }
-  ];
-
-  for (const { key, table } of dataTargets) {
-   // const response = await deleteRedisAndMySQL(productId, key, table);
-      try {
-       const query = `DELETE FROM \`${table}\` WHERE productId = ?`;
-  const values = [productId];
-
-  console.log(`Now deleting ${productId} \n query: ${query} \n values: ${values} `)
-    const mysqlResult = removeCachedAndQuery(key,query,values);
-
-
-    if (mysqlResult.affectedRows > 0) {
-     // const redisDelResult = await redisClient.del(redisKey);
-      console.log(`🗑️ MySQL + Redis delete complete. Redis deleted: ${mysqlResult > 0}`);
-      return logResponseDetails(req, res, { success: true, message: mysqlResult }, "deleteAllProductData", 200);
-
-    } else {
-        //    const redisDelResult = await redisClient.del(redisKey);
-    return logResponseDetails(req, res, { success: true, message: mysqlResult }, "deleteAllProductData", 200);
-
-      console.warn(`⚠️ No record found in MySQL table "${key}" for productId: ${productId}`);
+      if (!res.headersSent) {
+        console.log('✅ Transaction completed successfully. All records added. for productId:', addProductListRequest.productId);
+        return logResponseDetails(
+          req, res,
+          { status: 200, success: true, message: `${getLongTime()}: Operation completed successfully` },
+          "addNewCandy", 200
+        );
+      }
     }
-
-
   } catch (err) {
-    console.error(`🔥 Error during deleteRedisAndMySQL: ${err.message}`);
-    return logResponseDetails(req, res, { success: false, message: err.message }, "deleteAllProductData", 400);
-
-  } finally {
-     // Do NOT call redisClient.release() unless it's a pooled client (like ioredis cluster)
-    // If redisClient is a regular Redis instance, just leave it open (or close it when app shuts down)
-  }
-
+    console.error("🔥 Unexpected error in addNewCandy:", err);
+    if (!res.headersSent) {
+      return res.status(500).json({ message: 'Unexpected error in addNewCandy' });
+    }
   }
 };
+
+async function addNewCandy_function(addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing) {
+  console.log("" + ' \n Add Product Request:', addProductListRequest);
+  console.log("" + '\n Add Yummy Request:', addProductPricingRequest);
+  console.log("" + '\n Add Available Items:', addAvailableItemsRequest);
+  console.log("" + '\n Add Price Tracing:', addPriceTracing);
+
+  const productResult = await addProductRecord(addProductListRequest);
+  const yummyResult = await addYummyRecord(addProductPricingRequest);
+  const available_itemsResult = await addAvailableItems(addAvailableItemsRequest);
+  const price_tracing_Result = await addPriceTrace(addPriceTracing);
+
+  console.log(productResult + ' \n Add Product Request:', addProductListRequest);
+  console.log(yummyResult + '\n Add Yummy Request:', addProductPricingRequest);
+  console.log(available_itemsResult + '\n Add Available Items:', addAvailableItemsRequest);
+  console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
+}
+
+// ---------------------------------------------------------------------------
+// deleteAllProductData / deleteItem
+// ---------------------------------------------------------------------------
 
 export const deleteAllProductData = async (req, res) => {
   const productId = req.params.id;
 
   if (!productId) {
     return logResponseDetails(
-      req,
-      res,
+      req, res,
       { success: false, message: "Missing product ID for deleting all product data" },
-      "deleteAllProductData",
-      400
+      "deleteAllProductData", 400
     );
   }
 
@@ -674,9 +339,7 @@ export const deleteAllProductData = async (req, res) => {
 
     try {
       console.log(`🔄 Deleting from ${table} WHERE productId=${productId}`);
-      // NOTE: ControllerHandler now expects { pgQuery, mysqlQuery } as
-      // { text, values } specs, not positional (query, values) args.
-      const mysqlResult = await removeCachedAndQuery(key, { mysqlQuery: { text: query, values } }); // ✅ Use await
+      const mysqlResult = await removeCachedAndQuery(key, { mysqlQuery: { text: query, values } });
 
       if (mysqlResult?.affectedRows > 0) {
         console.log(`✅ Deleted from ${table}: ${mysqlResult.affectedRows} rows`);
@@ -684,133 +347,67 @@ export const deleteAllProductData = async (req, res) => {
         console.warn(`⚠️ No matching rows in ${table} for productId: ${productId}`);
       }
 
-      deleteResults.push({ table, affectedRows: mysqlResult.affectedRows || 0 });
+      deleteResults.push({ table, affectedRows: mysqlResult?.affectedRows || 0 });
 
     } catch (err) {
       console.error(`🔥 Error deleting from ${table}: ${err.message}`);
       return logResponseDetails(
-        req,
-        res,
+        req, res,
         { success: false, message: `Error deleting from ${table}: ${err.message}` },
-        "deleteAllProductData",
-        500
+        "deleteAllProductData", 500
       );
     }
   }
 
   return logResponseDetails(
-    req,
-    res,
-    {
-      success: true,
-      message: "Deletion completed across all tables",
-      results: deleteResults,
-    },
-    "deleteAllProductData",
-    200
+    req, res,
+    { success: true, message: "Deletion completed across all tables", results: deleteResults },
+    "deleteAllProductData", 200
   );
 };
 
-
-export const deleteRedisAndMySQL = async (productId, redisKey, mysqlTable) => {
-
-
-  let conn;
-
-
-};
-
-
-async function addNewCandy_function(addProductListRequest, addProductPricingRequest, addAvailableItemsRequest, addPriceTracing ){
-
-  
-  
-//  const connection = await mysqlPool.createConnection(); // Get a connection from the pool
-
-
-// Process each part as needed
-
-//res.json({ message: 'Data received successfully' });
-
-// await mysqlPool.beginTransaction(); // Start the transaction
-
-// Example of logging each part
-console.log("" + ' \n Add Product Request:', addProductListRequest);
-
-console.log("" + '\n Add Yummy Request:', addProductPricingRequest);
-
-console.log("" + '\n Add Available Items:', addAvailableItemsRequest);
-
-console.log("" + '\n Add Price Tracing:', addPriceTracing);
-
-// Create DB connection
-
-
-const productResult = await addProductRecord(addProductListRequest);
-const yummyResult = await addYummyRecord(addProductPricingRequest);
-const available_itemsResult = await addAvailableItems(addAvailableItemsRequest)
-const price_tracing_Result = await addPriceTrace(addPriceTracing);
-
-
-// Example of logging each part
-console.log(productResult + ' \n Add Product Request:', addProductListRequest);
-
-console.log(yummyResult + '\n Add Yummy Request:', addProductPricingRequest);
-
-console.log(available_itemsResult + '\n Add Available Items:', addAvailableItemsRequest);
-
-console.log(price_tracing_Result + '\n Add Price Tracing:', addPriceTracing);
-
-
-}
 const deleteItem = async (req, res) => {
-
-   logRequestDetails(req, "deleteItem");
+  logRequestDetails(req, "deleteItem");
 
   const { productId } = req.body;
-
   console.log(`${getLongTime()}: 🧹 Deleting productId: [${productId}]`);
 
   try {
-    // NOTE: deleteAllProductData is an Express-style handler expecting
-    // (req, res) and reading req.params.id — this was calling it as
-    // deleteAllProductData(productId), which passed productId in place of
-    // req, so req.params was undefined inside it. deleteAllProductData
-    // already sends its own response via logResponseDetails, so we return
-    // its result directly instead of also sending a second response here.
+    // deleteAllProductData is an Express-style handler expecting (req, res)
+    // and reads req.params.id, so it must be called with a req-shaped
+    // object, not the bare productId. It already sends its own response via
+    // logResponseDetails, so we return its result directly.
     return await deleteAllProductData({ params: { id: productId } }, res);
 
   } catch (error) {
     const errMsg = `${getLongTime()}: ❌ Failed to purge productId [${productId}]: ${error}`;
     console.error(errMsg);
-  return logResponseDetails(req, res, {
-      status: 500,
-     success: false, message: errMsg },"failed_purge",200);
+    return logResponseDetails(
+      req, res,
+      { status: 500, success: false, message: errMsg },
+      "failed_purge", 500
+    );
   }
 };
 
+// ---------------------------------------------------------------------------
+// Reusable record inserters
+// ---------------------------------------------------------------------------
 
-// Reusable function to insert product records
 async function addProductRecord(addProductListRequest, mySqlConnection) {
-    console.log(getLongTime()+": addProductRecord called..!")
+  console.log(getLongTime() + ": addProductRecord called..!");
 
-
-
-const prodId = addProductListRequest.productId;
-const newProductName = addProductListRequest.productName;
-const newProducFlavor = addProductListRequest.productFlavor;
-const newProductPrice = addProductListRequest.productPrice;
-const newProductImageURL =  addProductListRequest.image_url;
-const key = "productList"
+  const key = "productList";
   const query = `INSERT INTO productList (productId, productName, productFlavor, productPrice, image_url) VALUES (?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE 
       productName = VALUES(productName),
       productFlavor = VALUES(productFlavor),
       productPrice = VALUES(productPrice),
       image_url = VALUES(image_url)`;
-  // NOTE: identifiers were unquoted here, which Postgres folds to lowercase
-  // (productid, productname, ...) instead of matching the real camelCase
-  // columns — quoted to match the convention used elsewhere (estimates.js).
+
+  // Identifiers are quoted here because Postgres folds unquoted identifiers
+  // to lowercase (productid, productname, ...), which wouldn't match the
+  // real camelCase columns.
   const pgInsertQuery = `
     INSERT INTO productList ("productId", "productName", "productFlavor", "productPrice", image_url)
     VALUES ($1, $2, $3, $4, $5)
@@ -821,44 +418,32 @@ const key = "productList"
       image_url = EXCLUDED.image_url
   `;
 
-const replacements = [addProductListRequest.productId, addProductListRequest.productName,addProductListRequest.productFlavor,addProductListRequest.productPrice, addProductListRequest.image_url];
+  const replacements = [
+    addProductListRequest.productId, addProductListRequest.productName,
+    addProductListRequest.productFlavor, addProductListRequest.productPrice,
+    addProductListRequest.image_url
+  ];
 
-// Execute the query
-// const result = await mysqlPool.query(query, replacements);
-
-try {
-
- 
-  // NOTE: pgInsertQuery was built above but never passed in — Postgres was
-  // never actually written to. Wired it in as pgQuery.
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements }, pgQuery: { text: pgInsertQuery, values: replacements } });
-   return result;
-  //const removedKey = removeData(key);
-  //const returnedAddCach = getCachedOrQuery()
-  
-} catch (error) { 
-
-  // NOTE: mySqlConnection isn't passed by every caller (e.g.
-  // addNewCandy_function calls this with no connection argument at all) —
-  // calling .rollback() on undefined masked the real error with a
-  // "Cannot read properties of undefined" TypeError instead.
-  if (mySqlConnection) {
-    await mySqlConnection.rollback();
+  try {
+    return await addCachedAndQuery(key, {
+      mysqlQuery: { text: query, values: replacements },
+      pgQuery: { text: pgInsertQuery, values: replacements }
+    });
+  } catch (error) {
+    // mySqlConnection isn't passed by every caller (e.g. addNewCandy_function
+    // calls this with no connection at all), so guard before calling
+    // .rollback() to avoid masking the real error with a TypeError.
+    if (mySqlConnection) {
+      await mySqlConnection.rollback();
+    }
+    console.log(`❌ Failed: Rollback occurred on key [${key}] \n ${error}`);
+    throw new Error(`Exception on ${key}: ${error.message || error}`, { cause: error });
   }
-  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
-  throw `Exception on ${key} \n ${error} `;
-  
 }
 
-
-
-}
-
-// Reusable function to insert yummy records
 async function addYummyRecord(addProductPricingRequest, mySqlConnection) {
-    console.log("addYummyRecord called..!")
+  console.log("addYummyRecord called..!", addProductPricingRequest);
 
-  console.log("addYummyRecord \n "+ addProductPricingRequest);
   const key = "productPricing";
   const query = `INSERT INTO productPricing (productId, costPerItem, sellingPrice, productCommission, productProfit, productQuantity, productSize)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -869,9 +454,7 @@ async function addYummyRecord(addProductPricingRequest, mySqlConnection) {
       productProfit = VALUES(productProfit),
       productQuantity = VALUES(productQuantity),
       productSize = VALUES(productSize)`;
-  // NOTE: quoted the camelCase identifiers (Postgres would otherwise fold
-  // them to lowercase) and added the ON CONFLICT upsert clause that this
-  // query was missing, matching the mysql ON DUPLICATE KEY UPDATE above.
+
   const pgInsertQuery = `
     INSERT INTO productPricing ("productId", "costPerItem", "sellingPrice", "productCommission", "productProfit", "productQuantity", "productSize")
     VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -883,6 +466,7 @@ async function addYummyRecord(addProductPricingRequest, mySqlConnection) {
       "productQuantity" = EXCLUDED."productQuantity",
       "productSize" = EXCLUDED."productSize"
   `;
+
   const replacements = [
     addProductPricingRequest.productId,
     addProductPricingRequest.costPerItem,
@@ -893,36 +477,29 @@ async function addYummyRecord(addProductPricingRequest, mySqlConnection) {
     addProductPricingRequest.productSize
   ];
 
-try {
-
-  // NOTE: pgInsertQuery was built above but never passed in — Postgres was
-  // never actually written to. Wired it in as pgQuery.
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements }, pgQuery: { text: pgInsertQuery, values: replacements } });
-  return result;
-  
-} catch (error) {
-
-  // NOTE: guarded for the same reason as addProductRecord — not every
-  // caller passes a connection.
-  if (mySqlConnection) {
-    await mySqlConnection.rollback();
+  try {
+    return await addCachedAndQuery(key, {
+      mysqlQuery: { text: query, values: replacements },
+      pgQuery: { text: pgInsertQuery, values: replacements }
+    });
+  } catch (error) {
+    if (mySqlConnection) {
+      await mySqlConnection.rollback();
+    }
+    console.log(`❌ Failed: Rollback occurred on key [${key}] \n ${error}`);
+    throw new Error(`Exception on ${key}: ${error.message || error}`, { cause: error });
   }
-  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
-  throw `Exception on ${key} \n ${error} `;
-  
-}
 }
 
-// Reusable function to insert available items
 async function addAvailableItems(addAvailableItemsRequest, mySqlConnection) {
-  console.log("addAvailableItems called..!")
+  console.log("addAvailableItems called..!");
+
   const key = "availableItems";
   const query = `INSERT INTO availableItems (productId, itemsRemaining, lastUpdated) VALUES (?, ?, ?)
     ON DUPLICATE KEY UPDATE
       itemsRemaining = VALUES(itemsRemaining),
       lastUpdated = VALUES(lastUpdated)`;
-  // NOTE: quoted the camelCase identifiers and added the missing ON
-  // CONFLICT upsert clause, matching the mysql ON DUPLICATE KEY UPDATE above.
+
   const pgInsertQuery = `
     INSERT INTO availableItems ("productId", "itemsRemaining", "lastUpdated")
     VALUES ($1, $2, $3)
@@ -930,42 +507,34 @@ async function addAvailableItems(addAvailableItemsRequest, mySqlConnection) {
       "itemsRemaining" = EXCLUDED."itemsRemaining",
       "lastUpdated" = EXCLUDED."lastUpdated"
   `;
+
   const replacements = [
     addAvailableItemsRequest.productId,
     addAvailableItemsRequest.itemsRemaining,
     formatForMySQL(addAvailableItemsRequest.lastUpdated)
   ];
 
-try {
-
-  // NOTE: pgInsertQuery was built above but never passed in — Postgres was
-  // never actually written to. Wired it in as pgQuery.
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements }, pgQuery: { text: pgInsertQuery, values: replacements } });
-  return result;
-  
-} catch (error) {
-
-  // NOTE: guarded for the same reason as addProductRecord — not every
-  // caller passes a connection.
-  if (mySqlConnection) {
-    await mySqlConnection.rollback();
+  try {
+    return await addCachedAndQuery(key, {
+      mysqlQuery: { text: query, values: replacements },
+      pgQuery: { text: pgInsertQuery, values: replacements }
+    });
+  } catch (error) {
+    if (mySqlConnection) {
+      await mySqlConnection.rollback();
+    }
+    console.log(`❌ Failed: Rollback occurred on key [${key}] \n ${error}`);
+    throw new Error(`Exception on ${key}: ${error.message || error}`, { cause: error });
   }
-  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
-  throw `Exception on ${key} \n ${error} `;
-  
-}
 }
 
-// Reusable function to insert price tracing records
 async function addPriceTrace(addPriceTracing, mySqlConnection) {
-
   const key = "priceTracing";
   const query = `INSERT INTO priceTracing (productId, accAmount, date) VALUES (?, ?, ?)
     ON DUPLICATE KEY UPDATE
       accAmount = VALUES(accAmount),
       date = VALUES(date)`;
-  // NOTE: quoted the camelCase identifiers and added the missing ON
-  // CONFLICT upsert clause, matching the mysql ON DUPLICATE KEY UPDATE above.
+
   const pgInsertQuery = `
     INSERT INTO priceTracing ("productId", "accAmount", date)
     VALUES ($1, $2, $3)
@@ -973,6 +542,7 @@ async function addPriceTrace(addPriceTracing, mySqlConnection) {
       "accAmount" = EXCLUDED."accAmount",
       date = EXCLUDED.date
   `;
+
   const replacements = [
     addPriceTracing.productId,
     addPriceTracing.accAmount,
@@ -980,69 +550,89 @@ async function addPriceTrace(addPriceTracing, mySqlConnection) {
   ];
 
   try {
- 
-  // NOTE: pgInsertQuery was built above but never passed in — Postgres was
-  // never actually written to. Wired it in as pgQuery.
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements }, pgQuery: { text: pgInsertQuery, values: replacements } });
-  return result;
-  
-} catch (error) {
-
-  // NOTE: guarded for the same reason as addProductRecord — not every
-  // caller passes a connection.
-  if (mySqlConnection) {
-    await mySqlConnection.rollback();
+    return await addCachedAndQuery(key, {
+      mysqlQuery: { text: query, values: replacements },
+      pgQuery: { text: pgInsertQuery, values: replacements }
+    });
+  } catch (error) {
+    if (mySqlConnection) {
+      await mySqlConnection.rollback();
+    }
+    console.log(`❌ Failed: Rollback occurred on key [${key}] \n ${error}`);
+    throw new Error(`Exception on ${key}: ${error.message || error}`, { cause: error });
   }
-  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
-  throw `Exception on ${key} \n ${error} `;
-  
-}
 }
 
-// Reusable function to insert price tracing records
-async function addEstimates(estimatesList, mySqlConnection) {
-
+async function addEstimates(estimate, mySqlConnection) {
   const key = "estimates";
- 
-         const query = `
-            INSERT INTO estimates (productId, estimatedSelling, actualSelling, lastUpdated)
-            VALUES (?, ?, ?, ?)`;
-        // Parameterized query with replacements
- 
 
-  const replacements = [
-    estimatesList.productId,
-    estimatesList.estimatedSelling,
-    estimatesList.actualSelling,
-    formatForMySQL(estimatesList.lastUpdated), 
+  const values = [
+    estimate.productId,
+    estimate.estimatedSelling,
+    estimate.actualSelling,
+    formatForMySQL(estimate.lastUpdated),
   ];
 
+  // Upsert, so re-sending an existing productId updates instead of failing
+  // on uk_productId. (This is what fixed the "Duplicate entry ... for key
+  // 'estimates.uk_productId'" crash — make sure the running container is
+  // actually built from this version, not a stale image.)
+  const mysqlQuery = {
+    text: `
+      INSERT INTO estimates (productId, estimatedSelling, actualSelling, lastUpdated)
+      VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        estimatedSelling = VALUES(estimatedSelling),
+        actualSelling = VALUES(actualSelling),
+        lastUpdated = VALUES(lastUpdated)
+    `,
+    values,
+  };
+
+  const pgQuery = {
+    text: `
+      INSERT INTO estimates ("productId", "estimatedSelling", "actualSelling", "lastUpdated")
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT ("productId") DO UPDATE SET
+        "estimatedSelling" = EXCLUDED."estimatedSelling",
+        "actualSelling" = EXCLUDED."actualSelling",
+        "lastUpdated" = EXCLUDED."lastUpdated"
+    `,
+    values,
+  };
+
   try {
- 
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
-  return result;
-  
-} catch (error) {
-
-  // NOTE: guarded for the same reason as addProductRecord — not every
-  // caller passes a connection.
-  if (mySqlConnection) {
-    await mySqlConnection.rollback();
+    return await addCachedAndQuery(key, { pgQuery, mysqlQuery });
+  } catch (error) {
+    if (mySqlConnection) {
+      try {
+        await mySqlConnection.rollback();
+      } catch (rollbackError) {
+        console.error(`Rollback failed on key [${key}]:`, rollbackError);
+      }
+    }
+    console.error(`❌ Failed on key [${key}]:`, error);
+    throw new Error(`Exception on ${key}: ${error.message || error}`, { cause: error });
   }
-  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
-  throw `Exception on ${key} \n ${error} `;
-  
-}
 }
 
-// Reusable function to insert price tracing records
 async function addSodEod(sodEodList, mySqlConnection) {
-
   const key = "sodEodItems";
+
+  // Upsert added (matching addEstimates) — if sodEodItems has a unique
+  // constraint on productId, a plain INSERT will throw the same
+  // "Duplicate entry ... uk_productId" error this table's siblings had.
+  // Adjust/remove ON DUPLICATE KEY UPDATE if this table intentionally
+  // allows multiple historical rows per productId.
   const query = `
-                INSERT INTO sodEodItems (productId, productName, itemsRemaining, itemsTaken, lastUpdated)
-                VALUES (?, ?, ?, ?, ?)
-            `;  
+    INSERT INTO sodEodItems (productId, productName, itemsRemaining, itemsTaken, lastUpdated)
+    VALUES (?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      productName = VALUES(productName),
+      itemsRemaining = VALUES(itemsRemaining),
+      itemsTaken = VALUES(itemsTaken),
+      lastUpdated = VALUES(lastUpdated)
+  `;
 
   const replacements = [
     sodEodList.productId,
@@ -1050,141 +640,113 @@ async function addSodEod(sodEodList, mySqlConnection) {
     sodEodList.itemsRemaining,
     sodEodList.itemsTaken,
     formatForMySQL(sodEodList.lastUpdated),
-   ];
+  ];
 
   try {
- 
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
-  return result;
-  
-} catch (error) {
-
-  // NOTE: guarded for the same reason as addProductRecord — not every
-  // caller passes a connection.
-  if (mySqlConnection) {
-    await mySqlConnection.rollback();
+    return await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
+  } catch (error) {
+    if (mySqlConnection) {
+      await mySqlConnection.rollback();
+    }
+    console.log(`❌ Failed: Rollback occurred on key [${key}] \n ${error}`);
+    throw new Error(`Exception on ${key}: ${error.message || error}`, { cause: error });
   }
-  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
-  throw `Exception on ${key} \n ${error} `;
-  
 }
-}
-async function addProductItemPricing(productItemPricing, mySqlConnection){
 
+async function addProductItemPricing(productItemPricing, mySqlConnection) {
   const key = "productItemPricing";
+
+  // Upsert added for the same reason as addSodEod above — adjust/remove if
+  // this table intentionally allows multiple rows per productId.
   const query = `
-            INSERT INTO productItemPricing (productId, productDescription, itemGroup, itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    INSERT INTO productItemPricing (productId, productDescription, itemGroup, itemsRemainder, costOfRemainder, groupedQuantity, groupedProfit, groupedCommission)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      productDescription = VALUES(productDescription),
+      itemGroup = VALUES(itemGroup),
+      itemsRemainder = VALUES(itemsRemainder),
+      costOfRemainder = VALUES(costOfRemainder),
+      groupedQuantity = VALUES(groupedQuantity),
+      groupedProfit = VALUES(groupedProfit),
+      groupedCommission = VALUES(groupedCommission)
+  `;
 
-        // Parameterized query with replacements
-        const replacements = [productItemPricing.productId, productItemPricing.productDescription,productItemPricing.itemGroup,productItemPricing.itemsRemainder, productItemPricing.costOfRemainder, productItemPricing.groupedQuantity, productItemPricing.groupedProfit, productItemPricing.groupedCommission];
+  const replacements = [
+    productItemPricing.productId, productItemPricing.productDescription, productItemPricing.itemGroup,
+    productItemPricing.itemsRemainder, productItemPricing.costOfRemainder, productItemPricing.groupedQuantity,
+    productItemPricing.groupedProfit, productItemPricing.groupedCommission
+  ];
 
-          try {
- 
-  const result = await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
-  return result;
-  
-} catch (error) {
-
-  // NOTE: guarded for the same reason as addProductRecord — not every
-  // caller passes a connection.
-  if (mySqlConnection) {
-    await mySqlConnection.rollback();
+  try {
+    return await addCachedAndQuery(key, { mysqlQuery: { text: query, values: replacements } });
+  } catch (error) {
+    if (mySqlConnection) {
+      await mySqlConnection.rollback();
+    }
+    console.log(`❌ Failed: Rollback occurred on key [${key}] \n ${error}`);
+    throw new Error(`Exception on ${key}: ${error.message || error}`, { cause: error });
   }
-  console.log(`❌ Failed: Rolleback occured on key [${key}] \n ${error}`);
-  throw `Exception on ${key} \n ${error} `;
-  
-}
-        
-
-}
-async function deleteAvailableItems(productId){
-
-  const data = await mysqlPool.query('DELETE FROM availableItesms WHERE productId = :productId', {
-    replacements: { productId },
-}); 
-return data;
 }
 
-async function deleteCartList(productId){
+// ---------------------------------------------------------------------------
+// addListOfSodEod
+// ---------------------------------------------------------------------------
 
-  const data = await mysqlPool.query('DELETE FROM cartList WHERE productId = :productId', productId); 
-return data;
-}
+const addListOfSodEod = async (req, res) => {
+  const { sodEOd, availableItems, estimates, pricingTracing, ProductItemPricing } = req.body;
 
-async function deleteEstimates(productId){
-  const data = await mysqlPool.query('DELETE FROM estimates WHERE productId = :productId', productId); 
-return data;
-}
+  console.log(`pricingTracing: ${JSON.stringify(pricingTracing)} \n sodEOd: ${JSON.stringify(sodEOd)}, \n availableItems: ${JSON.stringify(availableItems)}, \n estimates: ${JSON.stringify(estimates)}`);
 
-async function deletePriceTracing(productId){
-
-  const data = await mysqlPool.query('DELETE FROM priceTracing WHERE productId = :productId', productId); 
-
-return data;
-}
-
-async function deleteStockItems(productId){
-
-  const data = await mysqlPool.query('DELETE FROM stockItems WHERE productId = :productId', productId); 
-return data;
-
-}
-
-async function deleteProductItemPricing(productId){
-  const data = await mysqlPool.query('DELETE FROM productPricing WHERE productId = :productId', productId); 
-return data;
-
-}
-
-async function deleteProductList(productId){
-  const data = await mysqlPool.query('DELETE FROM productList WHERE productId = :productId', productId); 
-return data;
-
-}
-
-const addListOfSodEod = async(req, res) =>{
-
-
-  const {sodEOd, availableItems, estimates, pricingTracing,ProductItemPricing} = req.body;
-
-          
-
-  console.log(`pricingTracing: ${JSON.stringify(pricingTracing)} \n sodEOd: ${JSON.stringify(sodEOd)}, \n availableItems: ${JSON.stringify(availableItems)}, \n estimates: ${JSON.stringify(estimates)}`)
-
-  // NOTE: `dbConnection` was declared with `const` inside this try block,
-  // scoping it to the block — every reference below was a ReferenceError.
-  // Hoisted the declaration.
   let dbConnection;
-    try{
+  try {
     dbConnection = await getConnection();
-  }catch(err){
+  } catch (err) {
     console.error("🔥 Error getting MySQL connection:", err);
     return res.status(500).json({ message: 'Error getting MySQL connection' });
-
   }
-  
-  const sodEodResponse = await addSodEod(sodEOd, dbConnection)
-  const availableItemsResponse = await addAvailableItems(availableItems,dbConnection);
-  const estimateResponse = await addEstimates(estimates, dbConnection)
-  // NOTE: this was `await (ProductItemPricing);` — it just awaited the raw
-  // request object instead of calling addProductItemPricing, so no
-  // productItemPricing row was ever written.
-  const productItemPricingResponse = await addProductItemPricing(ProductItemPricing, dbConnection);
-  // NOTE: was missing the dbConnection argument that every sibling call
-  // above passes, so a failure here would try to rollback() on undefined.
-  const pricetracingReponse = await addPriceTrace(pricingTracing, dbConnection);
 
-  const response ={
-    sodEodResponse,
-    availableItemsResponse,
-    estimateResponse,
-    pricetracingReponse
+  // Everything below used to run with no try/catch at all: any thrown
+  // error (e.g. the duplicate-key error from addEstimates) became an
+  // UnhandledPromiseRejection, the client request just hung forever, and
+  // dbConnection was never released — leaking a pooled connection on every
+  // failure. Wrapped in try/catch/finally to fix both.
+  try {
+    const sodEodResponse = await addSodEod(sodEOd, dbConnection);
+    const availableItemsResponse = await addAvailableItems(availableItems, dbConnection);
+    const estimateResponse = await addEstimates(estimates, dbConnection);
+    // Was previously `await (ProductItemPricing);` — it just awaited the
+    // raw request object instead of calling addProductItemPricing, so no
+    // productItemPricing row was ever written.
+    const productItemPricingResponse = await addProductItemPricing(ProductItemPricing, dbConnection);
+    const pricetracingReponse = await addPriceTrace(pricingTracing, dbConnection);
+
+    const response = {
+      sodEodResponse,
+      availableItemsResponse,
+      estimateResponse,
+      productItemPricingResponse, // was previously omitted from the response
+      pricetracingReponse
+    };
+
+    return logResponseDetails(req, res, response, "addListOfSodEod", 200);
+
+  } catch (error) {
+    console.error(`🔥 addListOfSodEod failed:`, error);
+    return logResponseDetails(
+      req, res,
+      { success: false, message: error.message || String(error) },
+      "addListOfSodEod", 500
+    );
+  } finally {
+    dbConnection.release();
   }
-  return logResponseDetails(req, res, response, "addListOfSodEod",200)
+};
 
-
-}
-
-
-export default {addNewCandy, addNewCandy_with_image, deleteItem, updateProducts_Batch, addListOfSodEod, addSodEod}
+export default {
+  addNewCandy,
+  addNewCandy_with_image,
+  deleteItem,
+  updateProducts_Batch,
+  addListOfSodEod,
+  addSodEod
+};

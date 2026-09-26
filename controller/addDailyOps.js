@@ -21,7 +21,9 @@ import { logRequestDetails, logResponseDetails } from '../utils/requestLogger.js
 
 export const addDailyOps = async (req, res) => {
     try {
-        await logRequestDetails(req, 'addDailyOps');
+//        await logRequestDetails(req, 'addDailyOps');
+        console.log('Request Body addDailyOps:', req.body); // Log the request body for debugging
+
     }catch (error) {
         console.error('Error in addDailyOps:', error);
         res.status(500).json({ error: 'Internal Server Error' });

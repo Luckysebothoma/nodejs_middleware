@@ -108,6 +108,11 @@ app.use((req, res, next) => {
   const correlationId = req.headers["x-correlation-id"] || "none";
   const authHeader = req.headers["authorization"];
 
+  // skip logging for /metrics endpoint to avoid infinite loop
+  if (req.path === "/metrics") {
+    return next();
+  }
+
   // Save original res.send
   const originalSend = res.send;
 

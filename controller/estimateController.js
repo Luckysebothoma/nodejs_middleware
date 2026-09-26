@@ -133,13 +133,6 @@ const addEstimates = async (req, res) => {
 
   try {
 
-    /*
-            productId: number;
-            estimatedSelling:number;
-            actualSelling:number;
-            lastUpdated:Date;
-    */
-
     const { productId, estimatedSelling, actualSelling, _lastUpdated } = req.body;
     const lastUpdated = formatForMySQL(_lastUpdated);
     console.log("id =>" + productId);

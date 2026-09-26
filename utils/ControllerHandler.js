@@ -374,25 +374,47 @@ const updateCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
 // ---------------------------------------------------------------------------
 // 🔧 Reusable: DELETE — Postgres first, MySQL fallback, then cache invalidate
 // ---------------------------------------------------------------------------
-const removeCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
-  await safeInvalidateKey(key); // pre-write invalidate, see addCachedAndQuery note
+const removeCachedAndQuery = async (
+  key,
+  { pgQuery, mysqlQuery } = {}
+) => {
+  await safeInvalidateKey(key);
 
   // 1️⃣ Try Postgres
   if (pgQuery) {
     let pgConn;
+
     try {
       pgConn = await getConnection();
-      if (!pgConn) throw new Error('Postgres connection unavailable');
 
-      console.log(`${getLongTime()}🗑️ [Postgres] Deleting for key [${key}]`);
-      const result = await pgConn.query(pgQuery.text, pgQuery.values ?? []);
+      if (!pgConn) {
+        throw new Error('Postgres connection unavailable');
+      }
 
-      console.log(`${getLongTime()}✅ [Postgres] Delete result on key ${key}:`, result.rowCount);
+      console.log(
+        `${getLongTime()}🗑️ [Postgres] Deleting for key [${key}]`
+      );
+
+      const result = await pgConn.query(
+        pgQuery.text,
+        pgQuery.values ?? []
+      );
+
+      console.log(
+        `${getLongTime()}✅ [Postgres] Delete result on key ${key}:`,
+        result.rowCount
+      );
+
       await safeInvalidateKey(key);
+
       return result;
+
     } catch (err) {
-      console.warn(`${getLongTime()}⚠️ [Postgres] Delete failed for key [${key}], falling back to MySQL:`, err.message);
-      // fall through to MySQL
+      console.warn(
+        `${getLongTime()}⚠️ [Postgres] Delete failed for key [${key}], falling back to MySQL:`,
+        err.message
+      );
+
     } finally {
       pgConn?.release?.();
     }
@@ -400,33 +422,56 @@ const removeCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
 
   // 2️⃣ MySQL fallback
   if (!mysqlQuery) {
-    throw new Error(`❌ No MySQL fallback query provided for key [${key}] and Postgres unavailable/omitted`);
+    throw new Error(
+      `❌ No MySQL fallback query provided for key [${key}]`
+    );
   }
 
   let connection;
+
   try {
     connection = await getConnection();
-    if (!connection) throw new Error('❌ MySQL connection failed');
 
-    try {
-      console.log(`${getLongTime()}🗑️ [MySQL] Deleting for key [${key}]`);
-      const [result] = await connection.query(mysqlQuery.text ?? mysqlQuery, mysqlQuery.values ?? []);
-
-      await connection.commit();
-      console.log(`${getLongTime()}✅ [MySQL] Delete result on key ${key}:`, result);
-      await safeInvalidateKey(key);
-      return result;
-    } catch (err) {
-      await connection.rollback();
-      console.error(`${getLongTime()}❌ [MySQL] Delete failed for [${key}]:`, err.message);
-      throw new Error(`${getLongTime()}❌ Delete failed for [${key}]: ${err.message}`);
-    } finally {
-      connection.release();
-      console.log(`${getLongTime()}🔚 [MySQL] Connection released after delete: [${key}]`);
+    if (!connection) {
+      throw new Error('MySQL connection unavailable');
     }
+
+    console.log(
+      `${getLongTime()}🗑️ [MySQL] Deleting for key [${key}]`
+    );
+
+    const [result] = await connection.query(
+      mysqlQuery.text ?? mysqlQuery,
+      mysqlQuery.values ?? []
+    );
+
+    console.log(
+      `${getLongTime()}✅ [MySQL] Delete result on key ${key}:`,
+      result
+    );
+
+    await safeInvalidateKey(key);
+
+    return result;
+
   } catch (err) {
-    console.error('🔥 Error getting MySQL connection:', err);
+
+    console.error(
+      `${getLongTime()}❌ [MySQL] Delete failed for [${key}]:`,
+      err.message
+    );
+
     throw err;
+
+  } finally {
+
+    if (connection) {
+      connection.release();
+
+      console.log(
+        `${getLongTime()}🔚 [MySQL] Connection released after delete: [${key}]`
+      );
+    }
   }
 };
 

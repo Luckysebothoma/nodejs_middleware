@@ -123,12 +123,13 @@ const tryGetFromCache = async (key) => {
 
 // Empty arrays are never cached (no negative caching), so the next read
 // always re-checks the database instead of trusting a cached "not found".
-const safeCacheSet = async (key, value) => {
-  if (Array.isArray(value) && value.length === 0) {
-    console.log(`${getLongTime()}⏭️  Skipping cache write for key [${key}] — empty result, not cached`);
-    return;
-  }
-  const result = await cacheSet(key, value, TTL_SECONDS);
+const NEGATIVE_CACHE_TTL_SECONDS = 30; // keep in sync with ControllerHandler.js, or import from a shared config
+
+const safeCacheSet = async (key, value, ttlSeconds) => {
+  const isEmpty = Array.isArray(value) && value.length === 0;
+  const ttl = ttlSeconds ?? (isEmpty ? NEGATIVE_CACHE_TTL_SECONDS : TTL_SECONDS);
+
+  const result = await cacheSet(key, value, ttl);
   if (!result.success) {
     console.warn(`${getLongTime()}⚠️ Cache write failed for key [${key}]:`, result.message);
   }

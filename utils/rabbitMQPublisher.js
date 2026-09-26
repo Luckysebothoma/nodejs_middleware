@@ -41,7 +41,17 @@ register.registerMetric(payloadLogMetric);
 
 const TELEGRAF_URL = process.env.TELEGRAF_URL || 'http://localhost:8186/metrics'; // update as needed
 
+let connectingPromise = null;
 
+const ensureConnected = async () => {
+  if (isConnected && channel) return;
+  if (!connectingPromise) {
+    connectingPromise = connectRabbitMQ().finally(() => {
+      connectingPromise = null;
+    });
+  }
+  await connectingPromise;
+};
 
 
 
@@ -60,9 +70,8 @@ export const connectRabbitMQ = async () => {
       console.error('🐇⚠️ Connection error:', err.message);
       isConnected = false;
     });
-
     isConnected = true;
-    console.log('🐇✅ RabbitMQ connected.');
+//    console.log('🐇✅ RabbitMQ connected.');
   } catch (err) {
     console.error('🐇❌ RabbitMQ connection failed:', err.message);
     isConnected = false;
@@ -71,7 +80,7 @@ export const connectRabbitMQ = async () => {
 export const publishToQueue = async (queueName, data) => { 
 
   try {
-    if (!isConnected || !channel) {
+    if (!(await ensureConnected())) {
       console.warn('🐇🔄 Attempting reconnect...');
       await connectRabbitMQ();
     }
@@ -87,7 +96,7 @@ export const publishToQueue = async (queueName, data) => {
       persistent: false,
     });
 
-    console.log(`📨 Sent log to RabbitMQ → [${queueName}]`);
+    //console.log(`📨 Sent log to RabbitMQ → [${queueName}]`);
   } catch (err) {
     console.error('🐇❌ Error publishing to queue:', err.message);
 
@@ -132,7 +141,7 @@ export const publishToQueueAndTelegraf = async (queueName, data) => {
         },
       });
 
-      console.log('📊 Sent metrics to Telegraf');
+     // console.log('📊 Sent metrics to Telegraf');
     } catch (telegrafErr) {
       console.error('📊❌ Failed to send metrics to Telegraf:', telegrafErr.message);
     }
@@ -200,7 +209,7 @@ export const publishToQueue_Redis_Telegraf = async (queueName, data) => {
 
     cacheSet(queueName, data);
 
-    console.log(`📨 Sent log to RabbitMQ → [${queueName}]`);
+    //console.log(`📨 Sent log to RabbitMQ → [${queueName}]`);
   } catch (err) {
     console.error('🐇❌ Error publishing to queue:', err.message);
 
