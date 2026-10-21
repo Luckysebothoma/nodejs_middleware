@@ -45,9 +45,18 @@ const upload = multer({ storage: memoryStorage() });
 // ROuter OBj
 const router = Router();
 
+// Product images stored in PostgreSQL: /productImage/:productId (+ /meta), /productImages
+import productImageRoutes from "./productImageRoutes.js";
+router.use(productImageRoutes);
+
+// These two image routes could never succeed (wrong helper signature / no multipart middleware).
+// They now answer clearly instead of failing with a 500/400.
+const imageRouteMoved = (req, res) =>
+  res.status(410).json({ error: "Gone: use POST /api/v1/student/productImage/:productId (multipart field 'image')" });
+
 //Princing  Estimates
 //router.post("/uploadImages",uploadImages );
-router.post("/uploadImages", uploadMiddleware, uploadImages);
+router.post("/uploadImages", imageRouteMoved);
 //router.get("/getImages",getImages);
 //router.get("/getImages/:id",getImagesById);
 // app.post("/upload", upload.single("image"), uploadImage);
@@ -156,7 +165,7 @@ router.put('/updatePricingList', updatePricingList);
     // Add New Candy
 
 router.post('/addNewCandy', addNewCandy);
-router.post("/addNewCandy_with_image", addNewCandy_with_image)
+router.post("/addNewCandy_with_image", imageRouteMoved)
 router.post('/updateProducts_Batch', updateProducts_Batch);
 
 

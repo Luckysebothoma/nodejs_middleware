@@ -68,6 +68,17 @@ const TTL_SECONDS = 30000 * 10; // ~83 hours
 // below). Tune to taste.
 const NEGATIVE_CACHE_TTL_SECONDS = 30;
 
+// 📌 Postgres tier switch.
+// BUG FIXED: every "Postgres" branch below called getConnection() imported from ../config/db.js,
+// which is the MySQL pool. Postgres-style SQL ($1, "quoted" identifiers) therefore always ran against
+// MySQL: reads came back empty/errored and fell through to MySQL anyway, and writes failed and fell
+// back. The effective behaviour has always been MySQL-only, plus a wasted failing query and a warning
+// per call. The tier is now explicitly OFF so that behaviour is stated, not accidental.
+// Do NOT flip this to true without (a) a real pg connection here (pgClient.connect() from
+// ../config/postgres.js) and (b) a migrated Postgres schema - otherwise writes would split data
+// between the two databases.
+const PG_TIER_ENABLED = false;
+
 
 
 // ---------------------------------------------------------------------------
@@ -153,7 +164,7 @@ const getCachedOrQuery = async (key, { pgQuery, mysqlQuery, pgBackfillQuery } = 
 
   // 2️⃣ Postgres
   let pgRows = null; // null = not consulted / errored, [] = consulted and empty
-  if (pgQuery) {
+  if (pgQuery && PG_TIER_ENABLED) {
     let pgConn;
     try {
       pgConn = await getConnection();
@@ -211,7 +222,7 @@ const getCachedOrQuery = async (key, { pgQuery, mysqlQuery, pgBackfillQuery } = 
       // Background: update Redis first, then backfill Postgres, in that order.
       (async () => {
         await safeCacheSet(key, rows);
-        await backfillPostgres(key, rows, pgBackfillQuery);
+        if (PG_TIER_ENABLED) await backfillPostgres(key, rows, pgBackfillQuery);
       })().catch((err) => {
         console.warn(`${getLongTime()}⚠️ Background Redis/Postgres sync failed for key [${key}]:`, err.message);
       });
@@ -246,7 +257,7 @@ const addCachedAndQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
   await safeInvalidateKey(key);
 
   // 1️⃣ Try Postgres
-  if (pgQuery) {
+  if (pgQuery && PG_TIER_ENABLED) {
     let pgConn;
     try {
       pgConn = await getConnection();
@@ -303,7 +314,7 @@ const updateCachedOrQuery = async (key, { pgQuery, mysqlQuery } = {}) => {
   await safeInvalidateKey(key); // pre-write invalidate, see addCachedAndQuery note
 
   // 1️⃣ Try Postgres (transactional)
-  if (pgQuery) {
+  if (pgQuery && PG_TIER_ENABLED) {
     let pgConn;
     try {
       pgConn = await getConnection();
@@ -381,7 +392,7 @@ const removeCachedAndQuery = async (
   await safeInvalidateKey(key);
 
   // 1️⃣ Try Postgres
-  if (pgQuery) {
+  if (pgQuery && PG_TIER_ENABLED) {
     let pgConn;
 
     try {

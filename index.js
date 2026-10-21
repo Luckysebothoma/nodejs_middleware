@@ -10,6 +10,7 @@ import { join, extname } from "path";
 import { createServer } from "https";
 import { createServer as createHttpServer } from "http";
 import cluster from "cluster";
+import startupMigrations from "./db/startupMigrations.js";
 import { cpus } from "os";
 import { v4 as uuidv4 } from "uuid";
 import { auth } from "express-oauth2-jwt-bearer";
@@ -454,7 +455,7 @@ app.post('/upload', uploada.array('images', 10), (req, res) => {
     if (!files || files.length === 0) {
       //return res.status(400).json({ message: 'No files uploaded' });
 
-        logResponseDetails(req, res, { message: '❌ No files uploaded' },req.path, 400)
+        return logResponseDetails(req, res, { message: '❌ No files uploaded' },req.path, 400)
 
     }
  
@@ -580,7 +581,12 @@ function startWorkerProcesses(app, credentials) {
   if (cluster.isPrimary) {
    console.log(getLongTime(new Date) +  `${getShortTime(new Date())} Master PID ${process.pid} with ${cpuCount} CPUs`);
     //logRequestDetails(app,credentials)
-    for (let i = 0; i < cpuCount - 1; i++) cluster.fork();
+    // Create / verify the database schema ONCE, here in the primary, before any worker serves traffic
+    // (workers are forked afterwards, so they can never race each other creating tables).
+    // Bounded by a timeout and non-fatal unless DB_SCHEMA_STRICT=1. DB_AUTO_MIGRATE=0 disables it.
+    startupMigrations()
+      .catch(err => console.error("[db-migrate] unexpected failure:", err.message))
+      .finally(() => { for (let i = 0; i < cpuCount - 1; i++) cluster.fork(); });
 
     cluster.on("exit", worker => {
      console.log(getLongTime(new Date) +  `${formattedDate()} Worker ${worker.process.pid} died, restarting...`);
