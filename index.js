@@ -457,9 +457,21 @@ const storageImages = multer.diskStorage({
  
     cb(null, 'uploads/'); // Directory to save files
   },
+  // Store the file under EXACTLY the name the client sent ("<name> <flavor>.webp").
+  // The front end derives image URLs from the product name, so any prefix/suffix added here
+  // (the old "<timestamp>-<random>-" prefix) makes the image impossible to find.
+  // Re-uploading the same name intentionally replaces the previous image.
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + file.originalname);
+    let name = String(file.originalname || '');
+    // multer/busboy decodes multipart filenames as latin1; recover UTF-8 names (e.g. accents).
+    const utf8 = Buffer.from(name, 'latin1').toString('utf8');
+    if (!utf8.includes('\uFFFD')) name = utf8;
+    name = path.basename(name.replace(/\\/g, '/'))      // no directory parts (path traversal)
+      .replace(/[\u0000-\u001f]/g, '-')                  // control chars
+      .replace(/^\.+/, '')                               // no hidden / ".." names
+      .trim();
+    if (!name) return cb(new Error('Invalid file name'));
+    cb(null, name);
   }
 });
 
