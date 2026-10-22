@@ -11,6 +11,9 @@ import { createServer } from "https";
 import { createServer as createHttpServer } from "http";
 import cluster from "cluster";
 import startupMigrations from "./db/startupMigrations.js";
+import { listMigrations, verifySchema } from "./db/migrate.js";
+import { mysqlPool } from "./config/db.js";
+import { pgClient } from "./config/postgres.js";
 import { cpus } from "os";
 import { v4 as uuidv4 } from "uuid";
 import { auth } from "express-oauth2-jwt-bearer";
@@ -49,6 +52,7 @@ const __dirname = path.dirname(__filename);
 
 import client from "prom-client";
 import prometheusMetrics from "./utils/prometheusMetrics.js";
+import observability from "./observability/sweety_observability.js";
 
 // Collect default Node.js process metrics (CPU, memory, event loop, etc.)
 // alongside the custom MySQL metrics defined in utils/prometheusMetrics.js.
@@ -102,6 +106,51 @@ app.use(cors({
 // Prometheus metrics: default + custom collectors are registered on
 // prom-client's default registry (client.register); see /metrics below
 // and utils/prometheusMetrics.js.
+
+// >>> sweety-observability >>>
+if (!cluster.isPrimary) {   // the primary only forks workers; it serves no traffic
+  const engines = ['mysql', 'postgres'];
+  const expectedMigrationVersions = Object.fromEntries(await Promise.all(engines.map(async engine => {
+    const migrations = await listMigrations(engine);
+    return [engine, Number(migrations[migrations.length - 1]?.version) || 0];
+  })));
+  const inspectDatabase = async (engine, pool) => {
+    let conn;
+    try {
+      conn = engine === 'mysql' ? await pool.getConnection() : await pool.connect();
+      await conn.query('SELECT 1');
+
+      let latestVersion = 0;
+      let schemaOk = false;
+      try {
+        const result = await conn.query('SELECT version FROM schema_migrations');
+        const rows = engine === 'mysql' ? result[0] : result.rows;
+        latestVersion = rows.reduce((latest, row) => Math.max(latest, Number(row.version) || 0), 0);
+        schemaOk = (await verifySchema(engine, conn)).ok;
+      } catch (err) {
+        console.error(`[observability] ${engine} schema status check failed:`, err.message);
+      }
+      return {
+        engine,
+        connected: true,
+        schemaOk,
+        migrationVersion: latestVersion,
+        migrationCurrent: latestVersion >= expectedMigrationVersions[engine]
+      };
+    } catch (err) {
+      console.error(`[observability] ${engine} database status check failed:`, err.message);
+      return { engine, connected: false, schemaOk: false, migrationVersion: 0, migrationCurrent: false };
+    } finally {
+      try { conn?.release(); } catch { /* connection may already be closed */ }
+    }
+  };
+  observability.install(app, {
+    query: sql => mysqlPool.query(sql),
+    databaseStatus: () => Promise.all(engines.map(engine =>
+      inspectDatabase(engine, engine === 'mysql' ? mysqlPool : pgClient)))
+  });
+}
+// <<< sweety-observability <<<
 
 app.use((req, res, next) => {
   const startTime = Date.now();

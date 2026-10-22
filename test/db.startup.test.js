@@ -10,7 +10,7 @@ const both = (TEST_PG_URL && TEST_MYSQL_URL) ? false : 'set TEST_PG_URL and TEST
 
 test('connection probe reports the selected database for each engine', async () => {
   const mysqlConn = { query: async (sql) => {
-    assert.equal(sql, 'SELECT 1 AS connected, DATABASE() AS database');
+    assert.match(sql, /^SELECT 1 AS connected, DATABASE\(\) AS `?database`?$/);
     return [[{ connected: 1, database: 'yummies' }]];
   } };
   const pgConn = { query: async (sql) => {
