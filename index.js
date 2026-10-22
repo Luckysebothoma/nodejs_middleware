@@ -309,6 +309,24 @@ const upload = multer({ dest: 'uploads/' }); // Will store file temporarily
 app.use('/uploads', express.static('uploads'));
 app.post('/upload-single', uploadImage);
 
+// Placeholder assets requested by the Angular app (fallback "broken image" + loader gifs).
+// No such files exist on this service, so every broken product <img> used to cost a 404
+// (GET /failures/failure.webp). Serve a small inline SVG instead; <img> honours the
+// Content-Type, so the .webp/.gif extension in the URL does not matter. Covers clients
+// still running an older bundle without needing a front-end redeploy.
+const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" rx="12" fill="#f1f3f5"/><path d="M30 84l22-26 16 18 10-12 12 20z" fill="#ced4da"/><circle cx="44" cy="40" r="8" fill="#ced4da"/><path d="M20 20l80 80" stroke="#adb5bd" stroke-width="5" stroke-linecap="round"/></svg>`;
+const LOADER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50"><circle cx="25" cy="25" r="18" fill="none" stroke="#ced4da" stroke-width="5"/><path d="M25 7a18 18 0 0 1 18 18" fill="none" stroke="#868e96" stroke-width="5" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="0.9s" repeatCount="indefinite"/></path></svg>`;
+const sendPlaceholder = (svg) => (req, res) => {
+  res.set({
+    'Content-Type': 'image/svg+xml; charset=utf-8',
+    'Cache-Control': 'public, max-age=86400',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  res.status(200).end(svg);
+};
+app.get(['/failures/:file', '/images/failures/:file'], sendPlaceholder(PLACEHOLDER_SVG));
+app.get('/loading/:file', sendPlaceholder(LOADER_SVG));
+
 import updateRouter from "./routes/updateProductRoutemySql_Redis.js";
 
 // POST /sortedAsRedisKey
