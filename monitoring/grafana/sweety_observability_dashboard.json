@@ -1,0 +1,41 @@
+{
+  "title": "Sweety – Inventory & API Observability",
+  "uid": "sweety-observability",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [
+    { "name": "ds", "type": "datasource", "query": "prometheus", "label": "Prometheus" }
+  ] },
+  "panels": [
+    { "id": 1, "type": "table", "title": "Stock levels (DB-derived)", "gridPos": {"h": 10, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "targets": [{"expr": "max by (product_id, category)(sweety_product_stock_units)", "instant": true, "format": "table", "refId": "A"}] },
+    { "id": 2, "type": "stat", "title": "Low-stock products", "gridPos": {"h": 5, "w": 4, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "targets": [{"expr": "count(max by (product_id)(sweety_product_stock_units) > 0 < 3) or vector(0)", "refId": "A"}] },
+    { "id": 3, "type": "stat", "title": "Out-of-stock products", "gridPos": {"h": 5, "w": 4, "x": 16, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "targets": [{"expr": "count(max by (product_id)(sweety_product_stock_units) == 0) or vector(0)", "refId": "A"}] },
+    { "id": 4, "type": "stat", "title": "Inventory sync age (s)", "gridPos": {"h": 5, "w": 4, "x": 20, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${ds}"}, "fieldConfig": {"defaults": {"unit": "s"}},
+      "targets": [{"expr": "time() - max(sweety_inventory_sync_last_success_timestamp_seconds)", "refId": "A"}] },
+    { "id": 5, "type": "stat", "title": "DB reachable (1=yes)", "gridPos": {"h": 5, "w": 8, "x": 12, "y": 5},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "targets": [{"expr": "min(sweety_observability_db_up)", "refId": "A"}] },
+    { "id": 6, "type": "timeseries", "title": "Request rate by route", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "targets": [{"expr": "sum by (method, route)(rate(sweety_http_requests_total[5m]))", "legendFormat": "{{method}} {{route}}", "refId": "A"}] },
+    { "id": 7, "type": "timeseries", "title": "p95 latency", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10},
+      "datasource": {"type": "prometheus", "uid": "${ds}"}, "fieldConfig": {"defaults": {"unit": "s"}},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le)(rate(sweety_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95", "refId": "A"}] },
+    { "id": 8, "type": "timeseries", "title": "5xx ratio", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+      "datasource": {"type": "prometheus", "uid": "${ds}"}, "fieldConfig": {"defaults": {"unit": "percentunit"}},
+      "targets": [{"expr": "sum(rate(sweety_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(sweety_http_requests_total[5m]))", "legendFormat": "5xx", "refId": "A"}] },
+    { "id": 9, "type": "stat", "title": "Completed orders / revenue (DB-defined)", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+      "datasource": {"type": "prometheus", "uid": "${ds}"},
+      "targets": [{"expr": "max(sweety_sales_completed_orders)", "legendFormat": "orders", "refId": "A"},
+                  {"expr": "max(sweety_sales_revenue)", "legendFormat": "revenue", "refId": "B"}] }
+  ]
+}

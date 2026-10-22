@@ -1,0 +1,7 @@
+# NOT applied automatically. Merge into the existing prometheus.yml scrape_configs
+# (adjust target host:port to the API as seen from the Prometheus container).
+- job_name: 'sweety_api_observability'
+  metrics_path: /metrics/observability
+  # authorization: { type: Bearer, credentials_file: /etc/prometheus/sweety_obs_token }
+  static_configs:
+    - targets: ['REPLACE_API_HOST:REPLACE_API_PORT']
