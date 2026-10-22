@@ -1,12 +1,37 @@
 import { test, describe, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import startupMigrations from '../db/startupMigrations.js';
+import startupMigrations, { probeConnection, runEngine } from '../db/startupMigrations.js';
 import { makeScratchPool, TEST_PG_URL } from './helpers/pg.js';
 import { makeScratchMysql, TEST_MYSQL_URL } from './helpers/mysql.js';
 
 const quiet = () => { const lines = []; return { lines, log: m => lines.push(m), warn: m => lines.push(m), error: m => lines.push(m) }; };
 const both = (TEST_PG_URL && TEST_MYSQL_URL) ? false : 'set TEST_PG_URL and TEST_MYSQL_URL';
+
+test('connection probe reports the selected database for each engine', async () => {
+  const mysqlConn = { query: async (sql) => {
+    assert.equal(sql, 'SELECT 1 AS connected, DATABASE() AS database');
+    return [[{ connected: 1, database: 'yummies' }]];
+  } };
+  const pgConn = { query: async (sql) => {
+    assert.equal(sql, 'SELECT 1 AS connected, current_database() AS database');
+    return { rows: [{ connected: 1, database: 'yummies' }] };
+  } };
+
+  assert.equal(await probeConnection('mysql', mysqlConn), 'yummies');
+  assert.equal(await probeConnection('postgres', pgConn), 'yummies');
+});
+
+test('connection failure is logged as a health failure before migrations run', async () => {
+  const log = quiet();
+  const r = await runEngine('mysql', {
+    getConnection: async () => { throw new Error("Access denied for user 'mini' to database 'yummies'"); }
+  }, log);
+
+  assert.match(log.lines[0], /^\[db-health\] mysql connection failed:/);
+  assert.match(log.lines[0], /Access denied/);
+  assert.equal(r.migration, null);
+});
 
 test('DB_AUTO_MIGRATE=0 skips everything and touches nothing', async () => {
   const r = await startupMigrations({ env: { DB_AUTO_MIGRATE: '0' }, logger: quiet(), mysqlPool: null, pgPool: null });

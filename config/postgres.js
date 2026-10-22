@@ -41,7 +41,7 @@ const initPgConnection = async () => {
     client.release();
   } catch (err) {
     console.error(`[Postgres] ❌ Initial connection failed:
-      username: ${pgUser}, password: ${pgPassword}, db name: ${pgDatabase}
+      username: ${pgUser}, db name: ${pgDatabase}
       Host: ${pgHost}, port: ${pgPort}
       \n`, err);
     process.exit(1);

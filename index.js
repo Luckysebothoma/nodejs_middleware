@@ -155,7 +155,7 @@ app.use((req, res, next) => {
         const token = authHeader.slice(7).trim();
         const decoded = jwt.decode(token);
         if (!decoded) {
-          console.warn("⚠️ Invalid JWT");
+          console.warn(`⚠️ Invalid JWT (not a decodable token, ${token.length} chars) on ${req.method} ${req.originalUrl}`);
         } else {
           await trackToken({
             token,
