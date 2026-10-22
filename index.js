@@ -135,7 +135,7 @@ app.use((req, res, next) => {
         userId,
         correlationId,
       };
-
+ 
       logRequestDetails(req, "Global Request Logger");
 
       // ✅ Don’t stop response, just log missing token
@@ -450,7 +450,7 @@ const uploada = multer({ storage: storageImages });
 
 // Route: POST /upload
 app.post('/upload', uploada.array('images', 10), (req, res) => {
-  try {
+  try { 
     const files = req.files;
     if (!files || files.length === 0) {
       //return res.status(400).json({ message: 'No files uploaded' });
@@ -534,7 +534,7 @@ logResponseDetails(req, res, {
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
-app.get('/api/images/:key', async (req, res) => {
+app.get('/images/:key', async (req, res) => {
   try {
     const { key } = req.params;
     const redisKey = `temp:${key}`;
@@ -545,7 +545,7 @@ app.get('/api/images/:key', async (req, res) => {
     res.setHeader('Content-Type', 'image/png'); // or image/jpeg
     res.send(Buffer.from(result.data, 'base64'));
   } catch (err) {
-    console.error('Error in /api/images/:key:', err);
+    console.error('Error in /images/:key:', err);
     res.status(500).json({ error: 'Server error while retrieving image' });
   }
 });
