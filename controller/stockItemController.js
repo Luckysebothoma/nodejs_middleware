@@ -161,6 +161,85 @@ const addStock = async (req, res) => {
   }
 };
 
+
+
+const addStockItems = async (req, res) => {
+  logRequestDetails(req, "addStockedItems");
+
+  try {
+    const { productId, stockDate, stockId, stockPrice, stockQuantity } = req.body ?? {};
+
+    const missing = missingFields({ productId, stockDate, stockId, stockPrice, stockQuantity });
+    if (missing.length) {
+      return respond(req, res, cacheKey, 400, {
+        message: "Please provide all fields",
+        response: `Missing: ${missing.join(", ")}`,
+      });
+    }
+
+    if (!isNumeric(stockPrice) || !isNumeric(stockQuantity)) {
+      return respond(req, res, cacheKey, 400, {
+        message: "stockPrice and stockQuantity must be numbers",
+      });
+    }
+
+    const stockDateSql = toSqlFormatOrNull(stockDate);
+    if (!stockDateSql) {
+      return respond(req, res, cacheKey, 400, {
+        message: `Invalid stockDate: ${stockDate}`,
+      });
+    }
+
+    const values = [productId, stockDateSql, stockId, stockPrice, stockQuantity];
+
+    // Both dialects upsert on stockId and update the same set of columns.
+    const mysqlQuery = {
+      text: `
+        INSERT INTO stockedItems (productId, stockDate, stockId, stockPrice, stockQuantity)
+        VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          productId = VALUES(productId),
+          stockDate = VALUES(stockDate),
+          stockPrice = VALUES(stockPrice),
+          stockQuantity = VALUES(stockQuantity)
+      `,
+      values,
+    };
+
+    const pgQuery = {
+      text: `
+        INSERT INTO stockedItems ("productId", "stockDate", "stockId", "stockPrice", "stockQuantity")
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT ("stockId") DO UPDATE SET
+          "productId" = EXCLUDED."productId",
+          "stockDate" = EXCLUDED."stockDate",
+          "stockPrice" = EXCLUDED."stockPrice",
+          "stockQuantity" = EXCLUDED."stockQuantity"
+      `,
+      values,
+    };
+
+    const result = await addCachedAndQuery(cacheKey, { pgQuery, mysqlQuery });
+
+    if (!result) {
+      return respond(req, res, cacheKey, 500, {
+        message: "Error: could not add stocked item",
+      });
+    }
+
+    return respond(req, res, cacheKey, 200, {
+      message: "Stocked Item Added Successfully",
+      result,
+    });
+  } catch (error) {
+    console.error("addStockedItems error:", error);
+    return respond(req, res, cacheKey, 500, {
+      message: "Error in addStockedItems API",
+      error: errorMessage(error),
+    });
+  }
+};
+
 const addStockedItems = async (req, res) => {
   logRequestDetails(req, "addStockedItems");
 
@@ -268,4 +347,4 @@ const removeStockedItems = async (req, res) => {
   }
 };
 
-export default { addStock, getStockList, deleteStock, addStockedItems, removeStockedItems };
+export default { addStock, getStockList, deleteStock, addStockedItems,addStockItems, removeStockedItems };

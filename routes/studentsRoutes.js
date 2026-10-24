@@ -9,7 +9,7 @@ import pricingController from "../controller/pricingController.js";
 const { deletePricing, getPricingList, add2Pricing, getYummyList, updateProductPricing, updatePricingList } = pricingController;
 
 import stockItemController from "../controller/stockItemController.js";
-const { addStock, addStockedItems, removeStockedItems, deleteStock } = stockItemController;
+const { addStock, addStockedItems, addStockItems, removeStockedItems, deleteStock } = stockItemController;
 
 import availableItemsController from "../controller/availableItemsController.js";
 const { addAvailableItems, getAvailableItems, updateAvailableItems, removeAvailableItemsById } = availableItemsController;
@@ -107,7 +107,10 @@ router.delete('/removeProductItemPricing/:id',deleteProductItemPricing)
 
 // stock
 router.post('/addStock', addStock);
-router.post('/addStockItems', addStockedItems);
+router.post('/addStockedItems', addStockedItems);
+router.post('/addStockItems', addStockItems);
+
+
 router.delete('/deleteStock/:id', deleteStock)
 router.delete('/removeStockedItems/:id', removeStockedItems)
 
