@@ -108,7 +108,9 @@ router.delete('/removeProductItemPricing/:id',deleteProductItemPricing)
 // stock
 router.post('/addStock', addStock);
 router.post('/addStockedItems', addStockedItems);
-router.post('/addStockItems', addStockItems);
+// addStockItems used to be a copy-paste of addStockedItems (validated stockId/stockDate/..., wrote stockedItems),
+// so the per-product stock payload always got a 400 and `stockItems` stayed empty. addStock is the handler that writes `stockItems`.
+router.post('/addStockItems', addStock);
 
 
 router.delete('/deleteStock/:id', deleteStock)

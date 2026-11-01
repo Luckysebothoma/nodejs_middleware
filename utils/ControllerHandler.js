@@ -490,7 +490,10 @@ const writeBoth = async (key, kind, { pgQuery, mysqlQuery } = {}, { tx = false }
   await safeInvalidateKey(key); // ...and after
 
   const failedOne = (tried.postgres && !ok.postgres) || (tried.mysql && !ok.mysql);
-  const countMismatch = tried.postgres && tried.mysql && ok.postgres && ok.mysql && affected(pgRes.value) !== affected(myRes.value);
+  // MySQL's ON DUPLICATE KEY UPDATE reports 2 affected rows when it updated an existing row (1 for a fresh insert),
+  // Postgres' ON CONFLICT DO UPDATE reports 1 either way. Compare "did it touch a row" instead of raw counts,
+  // otherwise every upsert-update is flagged DIVERGED and triggers a needless forced reconcile.
+  const countMismatch = tried.postgres && tried.mysql && ok.postgres && ok.mysql && (affected(pgRes.value) > 0) !== (affected(myRes.value) > 0);
   if (failedOne || countMismatch) {
     warn(`${getLongTime()}⚠️ DIVERGED on key [${key}] after ${kind}: ${failedOne ? 'one database failed' : `rows affected pg=${affected(pgRes.value)} mysql=${affected(myRes.value)}`}`);
     // copy-based repair is only safe when a row may be MISSING on one side (insert / update that matched 0 rows)

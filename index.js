@@ -22,7 +22,6 @@ import { fileURLToPath } from 'url';
 // Only use default import and destructuring
 import jwt from "jsonwebtoken";
  
- import { authMiddleware } from './utils/authMiddleware.js';
 import { logRequestDetails, logResponseDetails } from './utils/requestLogger.js';
 
 import redisClient from './config/redisClient.js';
@@ -241,10 +240,6 @@ import studentsRoutes from "./routes/studentsRoutes.js";
 
 app.use('/api/v1/student',studentsRoutes);
 //app.use('/temp',tempImage)
-
-app.get('/protected', authMiddleware, (req, res) => {
-  res.json({ message: `Hello ${req.user.sub}` });
-});
 
 
 app.post('/update-product', async (req, res) => {
@@ -665,7 +660,7 @@ function startWorkerProcesses(app, credentials) {
     // Bounded by a timeout and non-fatal unless DB_SCHEMA_STRICT=1. DB_AUTO_MIGRATE=0 disables it.
     startupMigrations()
       .catch(err => console.error("[db-migrate] unexpected failure:", err.message))
-      .finally(() => { for (let i = 0; i < cpuCount - 1; i++) cluster.fork(); });
+      .finally(() => { for (let i = 0; i < 1; i++) cluster.fork(); });
 
     cluster.on("exit", worker => {
      console.log(getLongTime(new Date) +  `${formattedDate()} Worker ${worker.process.pid} died, restarting...`);

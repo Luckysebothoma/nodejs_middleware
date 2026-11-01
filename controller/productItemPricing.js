@@ -78,10 +78,10 @@ const addProductItemPricing = async (req, res) => {
       // cacheKey/status arguments were silently dropped by res.send().
       // Routed through logResponseDetails like every other endpoint here.
       return logResponseDetails(req, res, {
-        status: 500,
+        status: 400,
         success: false,
-        message: "PLease Provide all fields"
-      }, cacheKey, 500)
+        message: "Please provide all fields"
+      }, cacheKey, 400)
 
     } else {
 
@@ -234,10 +234,10 @@ const updateProductItemPricing = async (req, res) => {
       // cacheKey/status arguments were silently dropped by res.send().
       // Routed through logResponseDetails like every other endpoint here.
       return logResponseDetails(req, res, {
-        status: 500,
+        status: 400,
         success: false,
-        message: "PLease Provide all fields"
-      }, cacheKey, 500)
+        message: "Please provide all fields"
+      }, cacheKey, 400)
 
 
     } else {
