@@ -9,7 +9,9 @@ networks:
   reactive-resume-network:
     driver: bridge
     external: true
-
+volumes:
+  certs:
+    external: true
 
 services: 
   sweety-api:
@@ -17,7 +19,7 @@ services:
     image: 192.168.0.140:5000/sweet-sweet-api:latest-prd
     volumes:
       - .:/app
-      - ./edge_reasume_certs:/certs:ro
+      - certs:/certs:ro
       - /etc/hosts:/etc/hosts:ro
     env_file:
       - .env
@@ -41,8 +43,8 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=aeae0e2a6e0b537e757742e452cb5eea29761f79dcb3cf1ee147f11d021126ad
     ports:
-      - 8083:8443
-      - 8093:8080
+      - 8084:8443
+      - 8094:8080
     restart: unless-stopped
     networks:
       - databases

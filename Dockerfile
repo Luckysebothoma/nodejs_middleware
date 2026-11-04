@@ -1,5 +1,5 @@
 # Node-API DOckerfile
-FROM 192.168.0.140:5000/node:22-alpine
+FROM node:22-alpine
 WORKDIR /app
 #COPY ./package.json .
 #COPY . .
@@ -15,7 +15,7 @@ WORKDIR /app
 #RUN npm install --production
 
 
-COPY ./edge_reasume_certs /certs
+COPY ./ /certs
 RUN chown -R node:node /certs
 
 USER node
